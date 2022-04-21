@@ -1,0 +1,15 @@
+output   = "repository/models"
+wipe     = true
+no-tests = true
+
+[sqlite3]
+  dbname    = "../../todotest.db"
+  blacklist = ["goose_db_version"]
+
+[mysql]
+  host      = "localhost"
+  user      = "todo"
+  pass      = "todo"
+  dbname    = "todotest"
+  blacklist = ["goose_db_version"]
+  sslmode   = "false"

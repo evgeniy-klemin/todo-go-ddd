@@ -1,0 +1,8 @@
+output:
+  oapi_api.gen.go
+generate:
+  - server
+  - spec
+package: ports
+include-tags:
+  - items

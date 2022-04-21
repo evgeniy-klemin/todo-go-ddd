@@ -1,0 +1,7 @@
+output:
+  oapi_types.gen.go
+generate:
+  - types
+package: ports
+include-tags:
+  - items

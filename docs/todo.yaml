@@ -1,0 +1,323 @@
+openapi: 3.0.0
+info:
+  title: todo
+  version: '1.0'
+  description: todo API
+  contact:
+    name: Evgeniy Klemin
+    email: evgeniy.klemin@gmail.com
+servers:
+  - url: 'http://localhost:3000'
+paths:
+  '/items/{item_id}':
+    parameters:
+      - $ref: '#/components/parameters/item_id'
+    get:
+      summary: Get Item Info by Item ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemResponse'
+              examples:
+                Get item:
+                  value:
+                    id: 141da42a-42c9-4701-b7bc-dc53bf4015d4
+                    name: item 1
+                    position: 1
+                    created_at: '2019-08-24T14:15:22Z'
+                    done: false
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Not Found
+        '500':
+          description: Internal Server Error
+      operationId: get-items-itemId
+      description: Retrieve the information of the item with the matching item ID.
+      parameters: []
+      tags:
+        - items
+    patch:
+      summary: Update Item
+      operationId: patch-items-itemid
+      responses:
+        '200':
+          description: User Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemResponse'
+              examples:
+                Updated item 1:
+                  value:
+                    id: 141da42a-42c9-4701-b7bc-dc53bf4015d4
+                    name: item 1
+                    position: 1
+                    created_at: '2019-08-24T14:15:22Z'
+                    done: true
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: User Not Found
+        '500':
+          description: Internal Server Error
+      description: Update the information of an existing item.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemPatch'
+            examples:
+              Mark item as done:
+                value:
+                  done: true
+        description: Patch user properties to update.
+      tags:
+        - items
+  /items:
+    post:
+      summary: Create New User
+      operationId: post-items
+      responses:
+        '201':
+          description: Item Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemResponse'
+              examples:
+                Created item:
+                  value:
+                    id: 141da42a-42c9-4701-b7bc-dc53bf4015d4
+                    name: item 1
+                    position: 1
+                    created_at: '2019-08-24T14:15:22Z'
+                    done: false
+        '400':
+          description: Missing Required Information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrBadParams'
+              examples:
+                excided max name length:
+                  value:
+                    message: ''
+                    fields:
+                      - field: name
+                        message: max length is 1000 symbols
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemPost'
+            examples:
+              Create item:
+                value:
+                  name: Item 1
+        description: Post the necessary fields for the API to create a new item.
+      description: Create a new item.
+      tags:
+        - items
+    parameters: []
+    get:
+      summary: Get all items
+      operationId: get-items
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemsResponse'
+              examples:
+                Get all items:
+                  value:
+                    - id: 141da42a-42c9-4701-b7bc-dc53bf4015d4
+                      name: item 1
+                      position: 1
+                      created_at: '2019-08-24T14:15:22Z'
+                      done: false
+                With certain fields:
+                  value:
+                    - id: 141da42a-42c9-4701-b7bc-dc53bf4015d4
+                      name: item 1
+                      position: 1
+                      done: false
+          headers:
+            Link:
+              schema:
+                type: string
+                example: </items/_page=1&_per_page=20>;rel=self
+              description: Pagination links
+            X-Page:
+              schema:
+                type: string
+              description: Page number
+            X-Per-Page:
+              schema:
+                type: string
+              description: Count items per page
+            X-Total-Count:
+              schema:
+                type: string
+              description: Total count items
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '500':
+          description: Internal Server Error
+      tags:
+        - items
+      description: Get all items
+      parameters:
+        - $ref: '#/components/parameters/_per_page'
+        - $ref: '#/components/parameters/_page'
+        - schema:
+            type: string
+            example: '-name,position'
+          in: query
+          name: _sort
+          description: Sort by fields
+        - in: query
+          description: Retrieve certain fields
+          name: _fields
+          schema:
+            type: string
+            example: 'name,position'
+        - schema:
+            type: boolean
+            example: 'true'
+          in: query
+          name: done
+          description: Filter by done
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: {}
+components:
+  schemas:
+    ItemPost:
+      type: object
+      title: ItemPost
+      properties:
+        name:
+          type: string
+        position:
+          type: integer
+          description: ''
+      required:
+        - name
+    ItemResponse:
+      type: object
+      title: Item
+      description: Todo item
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the given item.
+          example: 141da42a-42c9-4701-b7bc-dc53bf4015d4
+          format: uuid
+        name:
+          type: string
+          example: item 1
+          maxLength: 1000
+        position:
+          type: integer
+          example: 1
+          minimum: 1
+          description: Position for sort
+        created_at:
+          type: string
+          format: date-time
+          description: The date that the item was created.
+        done:
+          type: boolean
+          description: Done flag
+      required:
+        - id
+    ItemPatch:
+      type: object
+      title: ItemPatch
+      minProperties: 1
+      properties:
+        name:
+          type: string
+        position:
+          type: integer
+        done:
+          type: boolean
+    ItemsResponse:
+      title: ItemsResponse
+      type: array
+      description: Todo items
+      items:
+        $ref: '#/components/schemas/ItemResponse'
+    ErrBadParams:
+      title: Error
+      type: object
+      properties:
+        message:
+          type: string
+        fields:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+  securitySchemes:
+    test:
+      type: http
+      scheme: bearer
+      description: ''
+  responses: {}
+  parameters:
+    item_id:
+      name: item_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Item ID
+    _page:
+      name: _page
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+        maximum: 100
+      description: Page number
+    _per_page:
+      name: _per_page
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 1000
+      description: Count items per page
+tags:
+  - name: items
