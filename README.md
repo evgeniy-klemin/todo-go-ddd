@@ -4,7 +4,7 @@
 
 ## Prerequisites
 
-* `go get -u github.com/pressly/goose/v3/cmd/goose` - migrate DB
+* `go install github.com/pressly/goose/v3/cmd/goose@latest` - migrate DB
 * `go install github.com/volatiletech/sqlboiler/v4@latest` - ORM
 * `go install github.com/volatiletech/sqlboiler/v4/drivers/sqlboiler-mysql@latest` - ORM (MySQL)
 
