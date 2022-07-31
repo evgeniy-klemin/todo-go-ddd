@@ -5,6 +5,7 @@
 ## Prerequisites
 
 * `go install github.com/pressly/goose/v3/cmd/goose@latest` - migrate DB
+* `go get github.com/deepmap/oapi-codegen/pkg/codegen@v1.8.2` - dependancy for sqlboiler
 * `go install github.com/volatiletech/sqlboiler/v4@latest` - ORM
 * `go install github.com/volatiletech/sqlboiler/v4/drivers/sqlboiler-mysql@latest` - ORM (MySQL)
 
