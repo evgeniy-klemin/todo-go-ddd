@@ -74,7 +74,10 @@ func TestApplyAll_CreatesTableAndFTS(t *testing.T) {
 	db.Exec("DROP TABLE _fts_probe")
 	// Re-open since we polluted it
 	db.Close()
-	db, _ = sql.Open("sqlite3", ":memory:")
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("reopen db: %v", err)
+	}
 	defer db.Close()
 
 	fts, err := ApplyAll(db)
@@ -99,7 +102,10 @@ func TestApplyFTS_RebuildIndexesExistingRows(t *testing.T) {
 	}
 	db.Exec("DROP TABLE _fts_probe")
 	db.Close()
-	db, _ = sql.Open("sqlite3", ":memory:")
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("reopen db: %v", err)
+	}
 	defer db.Close()
 
 	// Create base table and insert data BEFORE FTS setup

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -52,7 +53,7 @@ func createItem(t *testing.T, e *echo.Echo, name string) {
 
 func searchItems(t *testing.T, e *echo.Echo, query string) []ports.ItemResponse {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, "/items?q="+query, nil)
+	req := httptest.NewRequest(http.MethodGet, "/items?q="+url.QueryEscape(query), nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -65,6 +66,8 @@ func searchItems(t *testing.T, e *echo.Echo, query string) []ports.ItemResponse 
 	return items
 }
 
+// getItems sends a GET /items request. The queryString parameter must be pre-encoded
+// by the caller (e.g. "q=task&_per_page=2"). Callers are responsible for proper URL encoding.
 func getItems(t *testing.T, e *echo.Echo, queryString string) []ports.ItemResponse {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/items?"+queryString, nil)
