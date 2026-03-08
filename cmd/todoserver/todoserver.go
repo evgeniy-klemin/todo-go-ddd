@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/go-testfixtures/testfixtures/v3"
@@ -14,6 +15,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/evgeniy-klemin/todo"
+	"github.com/evgeniy-klemin/todo/db/schema"
 	item "github.com/evgeniy-klemin/todo/internal/item"
 	itemports "github.com/evgeniy-klemin/todo/internal/item/ports"
 )
@@ -61,43 +63,12 @@ func server(port int) {
 	if err != nil {
 		panic(err)
 	}
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS item (
-		id VARCHAR(36) NOT NULL PRIMARY KEY,
-		name VARCHAR(1000) NOT NULL,
-		position INTEGER NOT NULL DEFAULT 1,
-		done BOOL NOT NULL DEFAULT FALSE,
-		created_at DATETIME NOT NULL
-	)`); err != nil {
+	ftsEnabled, err := schema.ApplyAll(db)
+	if err != nil {
 		panic(err)
 	}
-
-	// Create FTS5 virtual table for full-text search (optional — requires fts5 build tag)
-	if _, err := db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS item_fts USING fts5(name, content='item', content_rowid='rowid')`); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: FTS5 not available, falling back to LIKE search: %v\n", err)
-		// Drop any stale FTS triggers from a previous run that had FTS5 enabled,
-		// otherwise INSERTs/UPDATEs/DELETEs on item will fail.
-		for _, name := range []string{"item_ai", "item_ad", "item_au"} {
-			db.Exec("DROP TRIGGER IF EXISTS " + name)
-		}
-	} else {
-		// Triggers to keep FTS index in sync with item table
-		for _, stmt := range []string{
-			`CREATE TRIGGER IF NOT EXISTS item_ai AFTER INSERT ON item BEGIN
-				INSERT INTO item_fts(rowid, name) VALUES (new.rowid, new.name);
-			END`,
-			`CREATE TRIGGER IF NOT EXISTS item_ad AFTER DELETE ON item BEGIN
-				INSERT INTO item_fts(item_fts, rowid, name) VALUES('delete', old.rowid, old.name);
-			END`,
-			`CREATE TRIGGER IF NOT EXISTS item_au AFTER UPDATE ON item BEGIN
-				INSERT INTO item_fts(item_fts, rowid, name) VALUES('delete', old.rowid, old.name);
-				INSERT INTO item_fts(rowid, name) VALUES (new.rowid, new.name);
-			END`,
-		} {
-			if _, err := db.Exec(stmt); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: Failed to create FTS trigger: %v\n", err)
-				break
-			}
-		}
+	if !ftsEnabled {
+		fmt.Fprintf(os.Stderr, "Warning: FTS5 not available, falling back to LIKE search\n")
 	}
 
 	// Containers

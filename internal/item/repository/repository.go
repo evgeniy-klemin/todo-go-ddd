@@ -19,7 +19,8 @@ import (
 type Repository struct {
 	db         *sql.DB
 	mu         sync.Mutex
-	ftsEnabled *bool // cached detection result
+	ftsOnce    sync.Once
+	ftsEnabled bool
 }
 
 func New(db *sql.DB) *Repository {
@@ -29,16 +30,14 @@ func New(db *sql.DB) *Repository {
 }
 
 // hasFTS checks whether the item_fts virtual table exists (FTS5 is available).
-// The result is cached after the first call.
+// The result is cached using sync.Once for safe concurrent access.
 func (r *Repository) hasFTS() bool {
-	if r.ftsEnabled != nil {
-		return *r.ftsEnabled
-	}
-	var name string
-	err := r.db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='item_fts'").Scan(&name)
-	result := err == nil && name == "item_fts"
-	r.ftsEnabled = &result
-	return result
+	r.ftsOnce.Do(func() {
+		var name string
+		err := r.db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='item_fts'").Scan(&name)
+		r.ftsEnabled = err == nil && name == "item_fts"
+	})
+	return r.ftsEnabled
 }
 
 func (r *Repository) maxPosition(ctx context.Context) (int, error) {

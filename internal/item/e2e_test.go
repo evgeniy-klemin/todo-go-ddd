@@ -11,6 +11,7 @@ import (
 	"github.com/labstack/echo/v4"
 	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/evgeniy-klemin/todo/db/schema"
 	item "github.com/evgeniy-klemin/todo/internal/item"
 	"github.com/evgeniy-klemin/todo/internal/item/ports"
 )
@@ -21,31 +22,8 @@ func setupE2EDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	_, err = db.Exec(`
-		CREATE TABLE item (
-			id VARCHAR(36) NOT NULL PRIMARY KEY,
-			name VARCHAR(1000) NOT NULL,
-			position INTEGER NOT NULL DEFAULT 1,
-			done BOOL NOT NULL DEFAULT FALSE,
-			created_at DATETIME NOT NULL
-		);
-		CREATE INDEX idx_item_position ON item (position);
-
-		CREATE VIRTUAL TABLE IF NOT EXISTS item_fts USING fts5(name, content='item', content_rowid='rowid');
-
-		CREATE TRIGGER item_ai AFTER INSERT ON item BEGIN
-			INSERT INTO item_fts(rowid, name) VALUES (new.rowid, new.name);
-		END;
-		CREATE TRIGGER item_ad AFTER DELETE ON item BEGIN
-			INSERT INTO item_fts(item_fts, rowid, name) VALUES('delete', old.rowid, old.name);
-		END;
-		CREATE TRIGGER item_au AFTER UPDATE ON item BEGIN
-			INSERT INTO item_fts(item_fts, rowid, name) VALUES('delete', old.rowid, old.name);
-			INSERT INTO item_fts(rowid, name) VALUES (new.rowid, new.name);
-		END;
-	`)
-	if err != nil {
-		t.Fatalf("create table: %v", err)
+	if _, err := schema.ApplyAll(db); err != nil {
+		t.Fatalf("apply schema: %v", err)
 	}
 	return db
 }
