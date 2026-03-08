@@ -26,6 +26,19 @@ func setupTestDB(t *testing.T) *sql.DB {
 			created_at DATETIME NOT NULL
 		);
 		CREATE INDEX idx_item_position ON item (position);
+
+		CREATE VIRTUAL TABLE IF NOT EXISTS item_fts USING fts5(name, content='item', content_rowid='rowid');
+
+		CREATE TRIGGER item_ai AFTER INSERT ON item BEGIN
+			INSERT INTO item_fts(rowid, name) VALUES (new.rowid, new.name);
+		END;
+		CREATE TRIGGER item_ad AFTER DELETE ON item BEGIN
+			INSERT INTO item_fts(item_fts, rowid, name) VALUES('delete', old.rowid, old.name);
+		END;
+		CREATE TRIGGER item_au AFTER UPDATE ON item BEGIN
+			INSERT INTO item_fts(item_fts, rowid, name) VALUES('delete', old.rowid, old.name);
+			INSERT INTO item_fts(rowid, name) VALUES (new.rowid, new.name);
+		END;
 	`)
 	if err != nil {
 		t.Fatalf("create table: %v", err)
@@ -273,6 +286,80 @@ func TestCount_SearchFiltersCount(t *testing.T) {
 	}
 	if count != 3 {
 		t.Errorf("expected count 3 for nil search, got %d", count)
+	}
+}
+
+func TestAll_SearchPrefixMatch(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := New(db)
+	ctx := context.Background()
+
+	// Insert test items
+	for _, name := range []string{"Buying groceries", "Buy milk", "Walk the dog"} {
+		item, err := domain.NewItem(name, 1)
+		if err != nil {
+			t.Fatalf("NewItem: %v", err)
+		}
+		if _, err := repo.AddWithNextPosition(ctx, item); err != nil {
+			t.Fatalf("AddWithNextPosition: %v", err)
+		}
+	}
+
+	search := "buy"
+	items, err := repo.All(ctx, nil, &search, nil, 1, 20, nil)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(items) != 2 {
+		t.Errorf("expected 2 items matching prefix 'buy' (Buy milk, Buying groceries), got %d", len(items))
+	}
+}
+
+func TestAll_SearchMultipleWords(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := New(db)
+	ctx := context.Background()
+
+	for _, name := range []string{"Buy milk and eggs", "Buy bread", "Get milk"} {
+		item, err := domain.NewItem(name, 1)
+		if err != nil {
+			t.Fatalf("NewItem: %v", err)
+		}
+		if _, err := repo.AddWithNextPosition(ctx, item); err != nil {
+			t.Fatalf("AddWithNextPosition: %v", err)
+		}
+	}
+
+	// Both "buy" and "milk" must be present (FTS5 AND semantics)
+	search := "buy milk"
+	items, err := repo.All(ctx, nil, &search, nil, 1, 20, nil)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(items) != 1 {
+		t.Errorf("expected 1 item matching 'buy milk', got %d", len(items))
+	}
+}
+
+func TestBuildFTSQuery(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"buy", `"buy"*`},
+		{"buy milk", `"buy"* "milk"*`},
+		{"Buy Milk", `"Buy"* "Milk"*`},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		got := buildFTSQuery(tt.input)
+		if got != tt.expected {
+			t.Errorf("buildFTSQuery(%q) = %q, want %q", tt.input, got, tt.expected)
+		}
 	}
 }
 

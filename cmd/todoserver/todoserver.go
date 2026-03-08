@@ -71,6 +71,29 @@ func server(port int) {
 		panic(err)
 	}
 
+	// Create FTS5 virtual table for full-text search
+	if _, err := db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS item_fts USING fts5(name, content='item', content_rowid='rowid')`); err != nil {
+		panic(err)
+	}
+
+	// Triggers to keep FTS index in sync with item table
+	for _, stmt := range []string{
+		`CREATE TRIGGER IF NOT EXISTS item_ai AFTER INSERT ON item BEGIN
+			INSERT INTO item_fts(rowid, name) VALUES (new.rowid, new.name);
+		END`,
+		`CREATE TRIGGER IF NOT EXISTS item_ad AFTER DELETE ON item BEGIN
+			INSERT INTO item_fts(item_fts, rowid, name) VALUES('delete', old.rowid, old.name);
+		END`,
+		`CREATE TRIGGER IF NOT EXISTS item_au AFTER UPDATE ON item BEGIN
+			INSERT INTO item_fts(item_fts, rowid, name) VALUES('delete', old.rowid, old.name);
+			INSERT INTO item_fts(rowid, name) VALUES (new.rowid, new.name);
+		END`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			panic(err)
+		}
+	}
+
 	// Containers
 	itemContainer := item.NewContainer(db)
 
