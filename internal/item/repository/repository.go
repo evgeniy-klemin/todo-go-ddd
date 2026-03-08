@@ -17,14 +17,24 @@ import (
 )
 
 type Repository struct {
-	db *sql.DB
-	mu sync.Mutex
+	db      *sql.DB
+	mu      sync.Mutex
+	dialect string
 }
 
-func New(db *sql.DB) *Repository {
+func New(db *sql.DB, dialect string) *Repository {
 	return &Repository{
-		db: db,
+		db:      db,
+		dialect: dialect,
 	}
+}
+
+func (r *Repository) Dialect() string {
+	return r.dialect
+}
+
+func (r *Repository) isMySQL() bool {
+	return r.dialect == "mysql"
 }
 
 func (r *Repository) maxPosition(ctx context.Context) (int, error) {
@@ -148,7 +158,11 @@ func (r *Repository) All(
 	}
 
 	if search != nil && *search != "" {
-		query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
+		if r.isMySQL() {
+			query = append(query, qm.Where("MATCH("+models.ItemColumns.Name+") AGAINST(? IN BOOLEAN MODE)", *search+"*"))
+		} else {
+			query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
+		}
 	}
 
 	query = append(query, qm.Select(columns...))
@@ -196,7 +210,11 @@ func (r *Repository) Count(ctx context.Context, done *bool, search *string) (int
 	}
 
 	if search != nil && *search != "" {
-		query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
+		if r.isMySQL() {
+			query = append(query, qm.Where("MATCH("+models.ItemColumns.Name+") AGAINST(? IN BOOLEAN MODE)", *search+"*"))
+		} else {
+			query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
+		}
 	}
 
 	count, err := models.Items(query...).Count(ctx, r.db)

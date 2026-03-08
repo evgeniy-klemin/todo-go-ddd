@@ -18,8 +18,8 @@ func (c *Container) RegisterHandlers(e *echo.Echo) {
 	ports.RegisterHandlers(e, c.httpServer)
 }
 
-func NewContainer(db *sql.DB) *Container {
-	repository := repository.New(db)
+func NewContainer(db *sql.DB, dialect string) *Container {
+	repository := repository.New(db, dialect)
 	service := app.NewItemService(repository, repository)
 	httpServer := ports.NewHttpServer(service)
 	return &Container{

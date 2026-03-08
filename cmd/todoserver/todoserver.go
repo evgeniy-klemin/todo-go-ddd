@@ -72,7 +72,7 @@ func server(port int) {
 	}
 
 	// Containers
-	itemContainer := item.NewContainer(db)
+	itemContainer := item.NewContainer(db, "sqlite3")
 
 	// Register http handlers
 	itemContainer.RegisterHandlers(e)

@@ -37,7 +37,7 @@ func TestAddWithNextPosition_ConcurrentCreation_UniquePositions(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	repo := New(db)
+	repo := New(db, "sqlite3")
 	ctx := context.Background()
 
 	const numGoroutines = 20
@@ -93,7 +93,7 @@ func TestAddWithNextPosition_SequentialCreation_IncrementsPosition(t *testing.T)
 	db := setupTestDB(t)
 	defer db.Close()
 
-	repo := New(db)
+	repo := New(db, "sqlite3")
 	ctx := context.Background()
 
 	for i := 1; i <= 5; i++ {
@@ -115,7 +115,7 @@ func TestAll_SearchReturnsMatchingItems(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	repo := New(db)
+	repo := New(db, "sqlite3")
 	ctx := context.Background()
 
 	// Insert test items
@@ -143,7 +143,7 @@ func TestAll_SearchNoMatchReturnsEmpty(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	repo := New(db)
+	repo := New(db, "sqlite3")
 	ctx := context.Background()
 
 	item, err := domain.NewItem("Buy milk", 1)
@@ -168,7 +168,7 @@ func TestAll_SearchCaseInsensitive(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	repo := New(db)
+	repo := New(db, "sqlite3")
 	ctx := context.Background()
 
 	item, err := domain.NewItem("Buy Milk", 1)
@@ -193,7 +193,7 @@ func TestAll_SearchPartialMatch(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	repo := New(db)
+	repo := New(db, "sqlite3")
 	ctx := context.Background()
 
 	item, err := domain.NewItem("Buy milk and eggs", 1)
@@ -218,7 +218,7 @@ func TestAll_NilSearchReturnsAll(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	repo := New(db)
+	repo := New(db, "sqlite3")
 	ctx := context.Background()
 
 	for i := 1; i <= 3; i++ {
@@ -244,7 +244,7 @@ func TestCount_SearchFiltersCount(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	repo := New(db)
+	repo := New(db, "sqlite3")
 	ctx := context.Background()
 
 	for _, name := range []string{"Buy milk", "Buy eggs", "Walk the dog"} {
@@ -276,11 +276,26 @@ func TestCount_SearchFiltersCount(t *testing.T) {
 	}
 }
 
+func TestNewRepository_Dialect(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := New(db, "sqlite3")
+	if repo.Dialect() != "sqlite3" {
+		t.Errorf("expected dialect 'sqlite3', got '%s'", repo.Dialect())
+	}
+
+	repoMySQL := New(db, "mysql")
+	if repo2Dialect := repoMySQL.Dialect(); repo2Dialect != "mysql" {
+		t.Errorf("expected dialect 'mysql', got '%s'", repo2Dialect)
+	}
+}
+
 func TestAddWithNextPosition_WithExistingItems_ContinuesFromMax(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	repo := New(db)
+	repo := New(db, "sqlite3")
 	ctx := context.Background()
 
 	// Insert an item with position 10 using regular Add
