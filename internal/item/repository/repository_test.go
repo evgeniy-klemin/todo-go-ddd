@@ -111,6 +111,171 @@ func TestAddWithNextPosition_SequentialCreation_IncrementsPosition(t *testing.T)
 	}
 }
 
+func TestAll_SearchReturnsMatchingItems(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := New(db)
+	ctx := context.Background()
+
+	// Insert test items
+	for _, name := range []string{"Buy milk", "Buy eggs", "Walk the dog", "Read a book"} {
+		item, err := domain.NewItem(name, 1)
+		if err != nil {
+			t.Fatalf("NewItem: %v", err)
+		}
+		if _, err := repo.AddWithNextPosition(ctx, item); err != nil {
+			t.Fatalf("AddWithNextPosition: %v", err)
+		}
+	}
+
+	search := "buy"
+	items, err := repo.All(ctx, nil, &search, nil, 1, 20, nil)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(items) != 2 {
+		t.Errorf("expected 2 items matching 'buy', got %d", len(items))
+	}
+}
+
+func TestAll_SearchNoMatchReturnsEmpty(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := New(db)
+	ctx := context.Background()
+
+	item, err := domain.NewItem("Buy milk", 1)
+	if err != nil {
+		t.Fatalf("NewItem: %v", err)
+	}
+	if _, err := repo.AddWithNextPosition(ctx, item); err != nil {
+		t.Fatalf("AddWithNextPosition: %v", err)
+	}
+
+	search := "xyz"
+	items, err := repo.All(ctx, nil, &search, nil, 1, 20, nil)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(items) != 0 {
+		t.Errorf("expected 0 items matching 'xyz', got %d", len(items))
+	}
+}
+
+func TestAll_SearchCaseInsensitive(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := New(db)
+	ctx := context.Background()
+
+	item, err := domain.NewItem("Buy Milk", 1)
+	if err != nil {
+		t.Fatalf("NewItem: %v", err)
+	}
+	if _, err := repo.AddWithNextPosition(ctx, item); err != nil {
+		t.Fatalf("AddWithNextPosition: %v", err)
+	}
+
+	search := "buy milk"
+	items, err := repo.All(ctx, nil, &search, nil, 1, 20, nil)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(items) != 1 {
+		t.Errorf("expected 1 item matching 'buy milk' (case-insensitive), got %d", len(items))
+	}
+}
+
+func TestAll_SearchPartialMatch(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := New(db)
+	ctx := context.Background()
+
+	item, err := domain.NewItem("Buy milk and eggs", 1)
+	if err != nil {
+		t.Fatalf("NewItem: %v", err)
+	}
+	if _, err := repo.AddWithNextPosition(ctx, item); err != nil {
+		t.Fatalf("AddWithNextPosition: %v", err)
+	}
+
+	search := "milk"
+	items, err := repo.All(ctx, nil, &search, nil, 1, 20, nil)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(items) != 1 {
+		t.Errorf("expected 1 item matching partial 'milk', got %d", len(items))
+	}
+}
+
+func TestAll_NilSearchReturnsAll(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := New(db)
+	ctx := context.Background()
+
+	for i := 1; i <= 3; i++ {
+		item, err := domain.NewItem(fmt.Sprintf("Task %d", i), 1)
+		if err != nil {
+			t.Fatalf("NewItem: %v", err)
+		}
+		if _, err := repo.AddWithNextPosition(ctx, item); err != nil {
+			t.Fatalf("AddWithNextPosition: %v", err)
+		}
+	}
+
+	items, err := repo.All(ctx, nil, nil, nil, 1, 20, nil)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(items) != 3 {
+		t.Errorf("expected 3 items with nil search, got %d", len(items))
+	}
+}
+
+func TestCount_SearchFiltersCount(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := New(db)
+	ctx := context.Background()
+
+	for _, name := range []string{"Buy milk", "Buy eggs", "Walk the dog"} {
+		item, err := domain.NewItem(name, 1)
+		if err != nil {
+			t.Fatalf("NewItem: %v", err)
+		}
+		if _, err := repo.AddWithNextPosition(ctx, item); err != nil {
+			t.Fatalf("AddWithNextPosition: %v", err)
+		}
+	}
+
+	search := "buy"
+	count, err := repo.Count(ctx, nil, &search)
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("expected count 2 for 'buy', got %d", count)
+	}
+
+	// nil search returns all
+	count, err = repo.Count(ctx, nil, nil)
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("expected count 3 for nil search, got %d", count)
+	}
+}
+
 func TestAddWithNextPosition_WithExistingItems_ContinuesFromMax(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()

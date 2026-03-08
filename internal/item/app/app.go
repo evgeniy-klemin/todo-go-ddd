@@ -61,11 +61,11 @@ func (s *ItemService) Create(ctx context.Context, name string, position *int) (*
 }
 
 func (s *ItemService) List(ctx context.Context, query ListQuery) (ListResult, error) {
-	count, err := s.queryRepository.Count(ctx, query.Done)
+	count, err := s.queryRepository.Count(ctx, query.Done, query.Search)
 	if err != nil {
 		return ListResult{}, err
 	}
-	items, err := s.queryRepository.All(ctx, query.Done, query.Fields, query.Page, query.PerPage, query.SortFields)
+	items, err := s.queryRepository.All(ctx, query.Done, query.Search, query.Fields, query.Page, query.PerPage, query.SortFields)
 	if err != nil {
 		return ListResult{}, err
 	}

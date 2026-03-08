@@ -83,6 +83,7 @@ func buildListQuery(params GetItemsParams) (app.ListQuery, error) {
 	}
 	return app.ListQuery{
 		Done:       params.Done,
+		Search:     params.Q,
 		Fields:     fields,
 		Page:       page,
 		PerPage:    perPage,

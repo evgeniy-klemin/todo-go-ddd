@@ -76,6 +76,9 @@ type GetItemsParams struct {
 
 	// Filter by done
 	Done *bool `json:"done,omitempty"`
+
+	// Search by name
+	Q *string `json:"q,omitempty"`
 }
 
 // PostItemsJSONBody defines parameters for PostItems.

@@ -205,6 +205,12 @@ paths:
           in: query
           name: done
           description: Filter by done
+        - schema:
+            type: string
+            example: 'buy'
+          in: query
+          name: q
+          description: Search by name
       requestBody:
         content:
           application/json:

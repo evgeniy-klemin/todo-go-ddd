@@ -90,6 +90,7 @@ func (r *Repository) Add(ctx context.Context, item *domain.Item) (*domain.Item, 
 func (r *Repository) All(
 	ctx context.Context,
 	done *bool,
+	search *string,
 	fields []app.ItemField,
 	page, perPage int,
 	sortFields app.SortFields,
@@ -146,6 +147,10 @@ func (r *Repository) All(
 		query = append(query, qm.Where(models.ItemColumns.Done+"=?", *done))
 	}
 
+	if search != nil && *search != "" {
+		query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
+	}
+
 	query = append(query, qm.Select(columns...))
 	query = append(query, qm.Limit(perPage))
 	query = append(query, qm.Offset(perPage*(page-1)))
@@ -183,11 +188,15 @@ func (r *Repository) All(
 	return res, nil
 }
 
-func (r *Repository) Count(ctx context.Context, done *bool) (int, error) {
+func (r *Repository) Count(ctx context.Context, done *bool, search *string) (int, error) {
 	var query []qm.QueryMod
 
 	if done != nil {
 		query = append(query, qm.Where(models.ItemColumns.Done+"=?", *done))
+	}
+
+	if search != nil && *search != "" {
+		query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
 	}
 
 	count, err := models.Items(query...).Count(ctx, r.db)

@@ -43,6 +43,7 @@ type SortFields []SortField
 
 type ListQuery struct {
 	Done       *bool
+	Search     *string
 	Fields     []ItemField
 	Page       int
 	PerPage    int

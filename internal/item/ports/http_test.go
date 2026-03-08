@@ -94,6 +94,36 @@ func TestPostItems_InvalidName_Returns422(t *testing.T) {
 	}
 }
 
+func TestGetItems_WithSearchParam_PassesToService(t *testing.T) {
+	var capturedQuery app.ListQuery
+	svc := &mockService{
+		listFn: func(_ context.Context, query app.ListQuery) (app.ListResult, error) {
+			capturedQuery = query
+			return app.ListResult{}, nil
+		},
+	}
+
+	server := newTestServer(svc)
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/items?q=buy", nil)
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+
+	search := "buy"
+	if err := server.GetItems(ctx, GetItemsParams{Q: &search}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	if capturedQuery.Search == nil {
+		t.Fatal("expected search to be set, got nil")
+	}
+	if *capturedQuery.Search != "buy" {
+		t.Errorf("expected search 'buy', got '%s'", *capturedQuery.Search)
+	}
+}
+
 func TestGetItems_Returns200(t *testing.T) {
 	svc := &mockService{
 		listFn: func(_ context.Context, _ app.ListQuery) (app.ListResult, error) {

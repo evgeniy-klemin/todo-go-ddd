@@ -48,17 +48,21 @@ func (m *mockDomainRepository) Update(ctx context.Context, id domain.ModelID, up
 }
 
 type mockQueryRepository struct {
-	allFn func(ctx context.Context, done *bool, fields []ItemField, page, perPage int, sortFields SortFields) ([]Item, error)
+	allFn   func(ctx context.Context, done *bool, search *string, fields []ItemField, page, perPage int, sortFields SortFields) ([]Item, error)
+	countFn func(ctx context.Context, done *bool, search *string) (int, error)
 }
 
-func (m *mockQueryRepository) All(ctx context.Context, done *bool, fields []ItemField, page, perPage int, sortFields SortFields) ([]Item, error) {
+func (m *mockQueryRepository) All(ctx context.Context, done *bool, search *string, fields []ItemField, page, perPage int, sortFields SortFields) ([]Item, error) {
 	if m.allFn != nil {
-		return m.allFn(ctx, done, fields, page, perPage, sortFields)
+		return m.allFn(ctx, done, search, fields, page, perPage, sortFields)
 	}
 	return nil, nil
 }
 
-func (m *mockQueryRepository) Count(ctx context.Context, done *bool) (int, error) {
+func (m *mockQueryRepository) Count(ctx context.Context, done *bool, search *string) (int, error) {
+	if m.countFn != nil {
+		return m.countFn(ctx, done, search)
+	}
 	return 0, nil
 }
 
@@ -244,6 +248,66 @@ func TestUpdate_SetDoneFalse_CallsUncomplete(t *testing.T) {
 	}
 	if result.Done() {
 		t.Error("expected Done to be false after update")
+	}
+}
+
+func strPtr(v string) *string { return &v }
+
+func TestList_PassesSearchToRepository(t *testing.T) {
+	var capturedSearch *string
+	queryRepo := &mockQueryRepository{
+		allFn: func(_ context.Context, _ *bool, search *string, _ []ItemField, _, _ int, _ SortFields) ([]Item, error) {
+			capturedSearch = search
+			return []Item{}, nil
+		},
+		countFn: func(_ context.Context, _ *bool, search *string) (int, error) {
+			return 0, nil
+		},
+	}
+
+	svc := newService(&mockDomainRepository{}, queryRepo)
+	searchTerm := "buy"
+	_, err := svc.List(context.Background(), ListQuery{
+		Search:  &searchTerm,
+		Page:    1,
+		PerPage: 20,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedSearch == nil {
+		t.Fatal("expected search to be passed to repository, got nil")
+	}
+	if *capturedSearch != "buy" {
+		t.Errorf("expected search 'buy', got '%s'", *capturedSearch)
+	}
+}
+
+func TestList_NilSearch_PassesNilToRepository(t *testing.T) {
+	searchChecked := false
+	queryRepo := &mockQueryRepository{
+		allFn: func(_ context.Context, _ *bool, search *string, _ []ItemField, _, _ int, _ SortFields) ([]Item, error) {
+			searchChecked = true
+			if search != nil {
+				t.Errorf("expected nil search, got '%s'", *search)
+			}
+			return []Item{}, nil
+		},
+		countFn: func(_ context.Context, _ *bool, search *string) (int, error) {
+			return 0, nil
+		},
+	}
+
+	svc := newService(&mockDomainRepository{}, queryRepo)
+	_, err := svc.List(context.Background(), ListQuery{
+		Page:    1,
+		PerPage: 20,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !searchChecked {
+		t.Fatal("All was not called")
 	}
 }
 
