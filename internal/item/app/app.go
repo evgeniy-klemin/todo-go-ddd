@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"time"
+	"log/slog"
 
 	"github.com/evgeniy-klemin/todo/internal/item/domain"
 )
@@ -28,46 +28,46 @@ func (s *ItemService) GetItemByID(ctx context.Context, id string) (*domain.Item,
 }
 
 func (s *ItemService) Create(ctx context.Context, name string, position *int) (*domain.Item, error) {
-	positionVal := 0
-	if position != nil {
-		positionVal = *position
-	} else {
-		items, err := s.appRepository.All(ctx, nil, []ItemField{ItemFieldPosition}, 1, 1, SortFields{SortField{Field: ItemFieldPosition, SortDirection: SortDirectionDesc}})
-		if err != nil {
-			return nil, err
-		}
-		for _, item := range items {
-			if *item.Position > positionVal {
-				positionVal = *item.Position
-			}
-		}
-		positionVal += 1
-	}
-
-	id, err := domain.GenerateModelID()
+	pos, err := s.resolvePosition(ctx, position)
 	if err != nil {
+		slog.ErrorContext(ctx, "resolvePosition failed", "error", err)
 		return nil, err
 	}
-
-	item := &domain.Item{
-		ID:        id,
-		Name:      name,
-		Position:  positionVal,
-		Done:      false,
-		CreatedAt: time.Now().Truncate(time.Second),
-	}
-	if err := item.Validate(); err != nil {
+	item, err := domain.NewItem(name, pos)
+	if err != nil {
+		slog.WarnContext(ctx, "NewItem validation failed", "name", name, "position", pos, "error", err)
 		return nil, err
 	}
-	return s.domainRepository.Add(ctx, item)
+	result, err := s.domainRepository.Add(ctx, item)
+	if err != nil {
+		slog.ErrorContext(ctx, "domainRepository.Add failed", "error", err)
+		return nil, err
+	}
+	slog.InfoContext(ctx, "item created", "id", result.ID.String(), "position", result.Position)
+	return result, nil
 }
 
-func (s *ItemService) All(ctx context.Context, done *bool, fields []ItemField, page, perPage int, sortFields SortFields) ([]Item, error) {
-	return s.appRepository.All(ctx, done, fields, page, perPage, sortFields)
+func (s *ItemService) resolvePosition(ctx context.Context, position *int) (int, error) {
+	if position != nil {
+		return *position, nil
+	}
+	max, err := s.appRepository.MaxPosition(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return max + 1, nil
 }
 
-func (s *ItemService) Count(ctx context.Context, done *bool) (int, error) {
-	return s.appRepository.Count(ctx, done)
+func (s *ItemService) List(ctx context.Context, query ListQuery) (ListResult, error) {
+	count, err := s.appRepository.Count(ctx, query.Done)
+	if err != nil {
+		return ListResult{}, err
+	}
+	items, err := s.appRepository.All(ctx, query.Done, query.Fields, query.Page, query.PerPage, query.SortFields)
+	if err != nil {
+		return ListResult{}, err
+	}
+	return ListResult{Items: items, TotalCount: count}, nil
 }
 
 func (s *ItemService) Update(ctx context.Context, reqItem *Item) (*domain.Item, error) {
@@ -77,13 +77,21 @@ func (s *ItemService) Update(ctx context.Context, reqItem *Item) (*domain.Item, 
 	}
 	return s.domainRepository.Update(ctx, modelID, func(item *domain.Item) error {
 		if reqItem.Done != nil {
-			item.Done = *reqItem.Done
+			if *reqItem.Done {
+				item.Complete()
+			} else {
+				item.Uncomplete()
+			}
 		}
 		if reqItem.Position != nil {
-			item.Position = *reqItem.Position
+			if err := item.MoveTo(*reqItem.Position); err != nil {
+				return err
+			}
 		}
 		if reqItem.Name != nil {
-			item.Name = *reqItem.Name
+			if err := item.Rename(*reqItem.Name); err != nil {
+				return err
+			}
 		}
 		return nil
 	})

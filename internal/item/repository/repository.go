@@ -3,15 +3,16 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
-
-	"github.com/pkg/errors"
-	"github.com/volatiletech/sqlboiler/v4/boil"
-	"github.com/volatiletech/sqlboiler/v4/queries/qm"
 
 	"github.com/evgeniy-klemin/todo/internal/item/app"
 	"github.com/evgeniy-klemin/todo/internal/item/domain"
 	"github.com/evgeniy-klemin/todo/internal/item/repository/models"
+	"github.com/pkg/errors"
+	"github.com/volatiletech/sqlboiler/v4/boil"
+	"github.com/volatiletech/sqlboiler/v4/queries"
+	"github.com/volatiletech/sqlboiler/v4/queries/qm"
 )
 
 type Repository struct {
@@ -24,17 +25,25 @@ func New(db *sql.DB) *Repository {
 	}
 }
 
-func (r *Repository) GetByID(ctx context.Context, id domain.ModelID) (*domain.Item, error) {
-	return r.getByID(ctx, id, false)
+func (r *Repository) MaxPosition(ctx context.Context) (int, error) {
+	type result struct {
+		Max sql.NullInt64 `boil:"max"`
+	}
+	var res result
+	if err := queries.Raw("SELECT COALESCE(MAX(position), 0) as max FROM item").Bind(ctx, r.db, &res); err != nil {
+		return 0, errors.WithStack(err)
+	}
+	return int(res.Max.Int64), nil
 }
 
-func (r *Repository) getByID(ctx context.Context, id domain.ModelID, forUpdate bool) (*domain.Item, error) {
+func (r *Repository) GetByID(ctx context.Context, id domain.ModelID) (*domain.Item, error) {
+	return r.getByID(ctx, r.db, id)
+}
+
+func (r *Repository) getByID(ctx context.Context, executor boil.ContextExecutor, id domain.ModelID) (*domain.Item, error) {
 	var qms []qm.QueryMod
 	qms = append(qms, qm.Where(models.ItemColumns.ID+"=?", id.String()))
-	if forUpdate {
-		qms = append(qms, qm.For("UPDATE"))
-	}
-	item, err := models.Items(qms...).One(ctx, r.db)
+	item, err := models.Items(qms...).One(ctx, executor)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -52,6 +61,27 @@ func (r *Repository) getByID(ctx context.Context, id domain.ModelID, forUpdate b
 }
 
 func (r *Repository) Add(ctx context.Context, item *domain.Item) (*domain.Item, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Вычисляем позицию атомарно внутри транзакции если она не задана явно (position == 0 не используется — PositionMin=1).
+	// Если клиент передал position > 0, используем её напрямую.
+	position := item.Position
+	if position == 0 {
+		type res struct {
+			Max sql.NullInt64 `boil:"max"`
+		}
+		var r2 res
+		if err := queries.Raw("SELECT COALESCE(MAX(position), 0) as max FROM item").Bind(ctx, tx, &r2); err != nil {
+			return nil, fmt.Errorf("get max position: %w", err)
+		}
+		position = int(r2.Max.Int64) + 1
+		item.Position = position
+	}
+
 	dbItem := models.Item{
 		ID:        item.ID.String(),
 		Name:      item.Name,
@@ -59,11 +89,13 @@ func (r *Repository) Add(ctx context.Context, item *domain.Item) (*domain.Item, 
 		Done:      item.Done,
 		CreatedAt: item.CreatedAt.UTC(),
 	}
-
-	if err := dbItem.Insert(ctx, r.db, boil.Infer()); err != nil {
-		return nil, errors.Wrap(err, "ошибка добавления в базу")
+	if err := dbItem.Insert(ctx, tx, boil.Infer()); err != nil {
+		return nil, fmt.Errorf("insert item: %w", err)
 	}
 
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
+	}
 	return item, nil
 }
 
@@ -174,7 +206,11 @@ func (r *Repository) Count(ctx context.Context, done *bool) (int, error) {
 	return int(count), err
 }
 
-func (r *Repository) Update(ctx context.Context, id domain.ModelID, updater func(item *domain.Item) error) (*domain.Item, error) {
+func (r *Repository) Update(
+	ctx context.Context,
+	id domain.ModelID,
+	updater func(item *domain.Item) error,
+) (*domain.Item, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -183,7 +219,7 @@ func (r *Repository) Update(ctx context.Context, id domain.ModelID, updater func
 		_ = tx.Rollback()
 	}()
 
-	domainItem, err := r.getByID(ctx, id, true)
+	domainItem, err := r.getByID(ctx, tx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +235,7 @@ func (r *Repository) Update(ctx context.Context, id domain.ModelID, updater func
 		Done:      domainItem.Done,
 		CreatedAt: domainItem.CreatedAt,
 	}
-	_, err = dbItem.Update(ctx, r.db, boil.Blacklist(models.ItemColumns.CreatedAt))
+	_, err = dbItem.Update(ctx, tx, boil.Blacklist(models.ItemColumns.CreatedAt))
 	if err != nil {
 		return nil, err
 	}

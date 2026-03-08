@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/gofrs/uuid"
-	"github.com/pkg/errors"
 )
 
 type ModelID struct {
@@ -13,7 +12,7 @@ type ModelID struct {
 
 func NewModelID(value string) (ModelID, error) {
 	if len(value) != 36 {
-		return ModelID{}, errors.Errorf("Value must be 36 symbols: %s", value)
+		return ModelID{}, fmt.Errorf("value must be 36 symbols: %s", value)
 	}
 	return ModelID{value}, nil
 }
@@ -21,7 +20,7 @@ func NewModelID(value string) (ModelID, error) {
 func GenerateModelID() (ModelID, error) {
 	id, err := uuid.NewV4()
 	if err != nil {
-		return ModelID{}, errors.Wrap(err, "invalid generate uuid")
+		return ModelID{}, fmt.Errorf("invalid generate uuid: %w", err)
 	}
 	return ModelID{fmt.Sprintf("%s", id)}, nil
 }

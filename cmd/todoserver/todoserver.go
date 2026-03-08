@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"time"
-
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/go-testfixtures/testfixtures/v3"
@@ -58,14 +56,20 @@ func server(port int) {
 	// Swagger validation
 	setOapiValidator(e)
 
-	// db, err := sql.Open("sqlite3", "file:todotest.db?cache=shared")
-	db, err := sql.Open("mysql", "todo:todo@tcp(localhost)/todotest?parseTime=true")
+	db, err := sql.Open("sqlite3", "file:todotest.db?cache=shared")
+	// db, err := sql.Open("mysql", "todo:todo@tcp(localhost)/todotest?parseTime=true")
 	if err != nil {
 		panic(err)
 	}
-	db.SetConnMaxLifetime(time.Minute * 3)
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(10)
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS item (
+		id VARCHAR(36) NOT NULL PRIMARY KEY,
+		name VARCHAR(1000) NOT NULL,
+		position INTEGER NOT NULL DEFAULT 1,
+		done BOOL NOT NULL DEFAULT FALSE,
+		created_at DATETIME NOT NULL
+	)`); err != nil {
+		panic(err)
+	}
 
 	// Containers
 	itemContainer := item.NewContainer(db)
@@ -101,6 +105,5 @@ func main() {
 	var port = flag.Int("port", 8080, "Port for test HTTP server")
 	flag.Parse()
 
-	fixtures()
 	server(*port)
 }
