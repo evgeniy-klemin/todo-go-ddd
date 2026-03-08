@@ -26,6 +26,21 @@ func setupTestDB(t *testing.T) *sql.DB {
 			created_at DATETIME NOT NULL
 		);
 		CREATE INDEX idx_item_position ON item (position);
+
+		CREATE VIRTUAL TABLE item_fts USING fts5(name, content='item', content_rowid='rowid');
+
+		CREATE TRIGGER item_ai AFTER INSERT ON item BEGIN
+			INSERT INTO item_fts(rowid, name) VALUES (new.rowid, new.name);
+		END;
+
+		CREATE TRIGGER item_ad AFTER DELETE ON item BEGIN
+			INSERT INTO item_fts(item_fts, rowid, name) VALUES('delete', old.rowid, old.name);
+		END;
+
+		CREATE TRIGGER item_au AFTER UPDATE ON item BEGIN
+			INSERT INTO item_fts(item_fts, rowid, name) VALUES('delete', old.rowid, old.name);
+			INSERT INTO item_fts(rowid, name) VALUES (new.rowid, new.name);
+		END;
 	`)
 	if err != nil {
 		t.Fatalf("create table: %v", err)
@@ -273,6 +288,62 @@ func TestCount_SearchFiltersCount(t *testing.T) {
 	}
 	if count != 3 {
 		t.Errorf("expected count 3 for nil search, got %d", count)
+	}
+}
+
+func TestAll_SearchMultipleWords(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := New(db)
+	ctx := context.Background()
+
+	for _, name := range []string{"Buy milk", "Buy eggs", "Walk the dog", "Buy milk and eggs"} {
+		item, err := domain.NewItem(name, 1)
+		if err != nil {
+			t.Fatalf("NewItem: %v", err)
+		}
+		if _, err := repo.AddWithNextPosition(ctx, item); err != nil {
+			t.Fatalf("AddWithNextPosition: %v", err)
+		}
+	}
+
+	search := "buy milk"
+	items, err := repo.All(ctx, nil, &search, nil, 1, 20, nil)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	// Should match "Buy milk" and "Buy milk and eggs" (both contain "buy" AND "milk")
+	if len(items) != 2 {
+		t.Errorf("expected 2 items matching 'buy milk', got %d", len(items))
+	}
+}
+
+func TestAll_SearchPrefixMatch(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := New(db)
+	ctx := context.Background()
+
+	for _, name := range []string{"Buy milk", "Build a house", "Walk the dog"} {
+		item, err := domain.NewItem(name, 1)
+		if err != nil {
+			t.Fatalf("NewItem: %v", err)
+		}
+		if _, err := repo.AddWithNextPosition(ctx, item); err != nil {
+			t.Fatalf("AddWithNextPosition: %v", err)
+		}
+	}
+
+	search := "bu"
+	items, err := repo.All(ctx, nil, &search, nil, 1, 20, nil)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	// Should match "Buy milk" and "Build a house" (prefix "bu" matches "buy" and "build")
+	if len(items) != 2 {
+		t.Errorf("expected 2 items matching prefix 'bu', got %d", len(items))
 	}
 }
 

@@ -148,7 +148,9 @@ func (r *Repository) All(
 	}
 
 	if search != nil && *search != "" {
-		query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
+		ftsQuery := toFTSQuery(*search)
+		query = append(query, qm.InnerJoin("item_fts ON item.rowid = item_fts.rowid"))
+		query = append(query, qm.Where("item_fts MATCH ?", ftsQuery))
 	}
 
 	query = append(query, qm.Select(columns...))
@@ -196,7 +198,9 @@ func (r *Repository) Count(ctx context.Context, done *bool, search *string) (int
 	}
 
 	if search != nil && *search != "" {
-		query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
+		ftsQuery := toFTSQuery(*search)
+		query = append(query, qm.InnerJoin("item_fts ON item.rowid = item_fts.rowid"))
+		query = append(query, qm.Where("item_fts MATCH ?", ftsQuery))
 	}
 
 	count, err := models.Items(query...).Count(ctx, r.db)
@@ -242,4 +246,16 @@ func (r *Repository) Update(
 		return nil, err
 	}
 	return domainItem, nil
+}
+
+// toFTSQuery converts a search string into an FTS5 prefix query.
+// Each word gets a * suffix for prefix matching, and words are joined
+// with spaces (implicit AND in FTS5).
+// Example: "buy milk" -> "buy* milk*", "buy" -> "buy*"
+func toFTSQuery(search string) string {
+	words := strings.Fields(search)
+	for i, word := range words {
+		words[i] = word + "*"
+	}
+	return strings.Join(words, " ")
 }
