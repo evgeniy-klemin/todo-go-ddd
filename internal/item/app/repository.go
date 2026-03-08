@@ -5,5 +5,4 @@ import "context"
 type QueryRepository interface {
 	All(ctx context.Context, done *bool, fields []ItemField, page, perPage int, sortFields SortFields) ([]Item, error)
 	Count(ctx context.Context, done *bool) (int, error)
-	MaxPosition(ctx context.Context) (int, error)
 }

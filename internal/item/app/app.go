@@ -28,35 +28,36 @@ func (s *ItemService) GetItemByID(ctx context.Context, id string) (*domain.Item,
 }
 
 func (s *ItemService) Create(ctx context.Context, name string, position *int) (*domain.Item, error) {
-	pos, err := s.resolvePosition(ctx, position)
+	if position != nil {
+		item, err := domain.NewItem(name, *position)
+		if err != nil {
+			slog.WarnContext(ctx, "NewItem validation failed", "name", name, "position", *position, "error", err)
+			return nil, err
+		}
+		result, err := s.domainRepository.Add(ctx, item)
+		if err != nil {
+			slog.ErrorContext(ctx, "domainRepository.Add failed", "error", err)
+			return nil, err
+		}
+		resultID := result.ID()
+		slog.InfoContext(ctx, "item created", "id", resultID.String(), "position", result.Position().Int())
+		return result, nil
+	}
+
+	// Auto-position: create with placeholder, repo will assign real position atomically
+	item, err := domain.NewItem(name, 1)
 	if err != nil {
-		slog.ErrorContext(ctx, "resolvePosition failed", "error", err)
+		slog.WarnContext(ctx, "NewItem validation failed", "name", name, "error", err)
 		return nil, err
 	}
-	item, err := domain.NewItem(name, pos)
+	result, err := s.domainRepository.AddWithNextPosition(ctx, item)
 	if err != nil {
-		slog.WarnContext(ctx, "NewItem validation failed", "name", name, "position", pos, "error", err)
-		return nil, err
-	}
-	result, err := s.domainRepository.Add(ctx, item)
-	if err != nil {
-		slog.ErrorContext(ctx, "domainRepository.Add failed", "error", err)
+		slog.ErrorContext(ctx, "domainRepository.AddWithNextPosition failed", "error", err)
 		return nil, err
 	}
 	resultID := result.ID()
 	slog.InfoContext(ctx, "item created", "id", resultID.String(), "position", result.Position().Int())
 	return result, nil
-}
-
-func (s *ItemService) resolvePosition(ctx context.Context, position *int) (int, error) {
-	if position != nil {
-		return *position, nil
-	}
-	max, err := s.queryRepository.MaxPosition(ctx)
-	if err != nil {
-		return 0, err
-	}
-	return max + 1, nil
 }
 
 func (s *ItemService) List(ctx context.Context, query ListQuery) (ListResult, error) {

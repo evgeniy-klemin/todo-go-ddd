@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/evgeniy-klemin/todo/internal/item/app"
 	"github.com/evgeniy-klemin/todo/internal/item/domain"
@@ -17,6 +18,7 @@ import (
 
 type Repository struct {
 	db *sql.DB
+	mu sync.Mutex
 }
 
 func New(db *sql.DB) *Repository {
@@ -25,7 +27,7 @@ func New(db *sql.DB) *Repository {
 	}
 }
 
-func (r *Repository) MaxPosition(ctx context.Context) (int, error) {
+func (r *Repository) maxPosition(ctx context.Context) (int, error) {
 	type result struct {
 		Max sql.NullInt64 `boil:"max"`
 	}
@@ -34,6 +36,22 @@ func (r *Repository) MaxPosition(ctx context.Context) (int, error) {
 		return 0, errors.WithStack(err)
 	}
 	return int(res.Max.Int64), nil
+}
+
+func (r *Repository) AddWithNextPosition(ctx context.Context, item *domain.Item) (*domain.Item, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	max, err := r.maxPosition(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("max position: %w", err)
+	}
+
+	if err := item.MoveTo(max + 1); err != nil {
+		return nil, fmt.Errorf("move to position: %w", err)
+	}
+
+	return r.Add(ctx, item)
 }
 
 func (r *Repository) GetByID(ctx context.Context, id domain.ModelID) (*domain.Item, error) {
