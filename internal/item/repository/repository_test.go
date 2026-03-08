@@ -46,6 +46,114 @@ func setupTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
+// setupTestDBWithoutFTS creates a test DB without the FTS5 virtual table,
+// to verify LIKE-based search fallback works.
+func setupTestDBWithoutFTS(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	_, err = db.Exec(`
+		CREATE TABLE item (
+			id VARCHAR(36) NOT NULL PRIMARY KEY,
+			name VARCHAR(1000) NOT NULL,
+			position INTEGER NOT NULL DEFAULT 1,
+			done BOOL NOT NULL DEFAULT FALSE,
+			created_at DATETIME NOT NULL
+		);
+		CREATE INDEX idx_item_position ON item (position);
+	`)
+	if err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	return db
+}
+
+func TestAll_SearchFallbackLIKE(t *testing.T) {
+	db := setupTestDBWithoutFTS(t)
+	defer db.Close()
+
+	repo := New(db)
+	ctx := context.Background()
+
+	// Insert test items
+	for _, name := range []string{"Buy milk", "Buy eggs", "Walk the dog", "Read a book"} {
+		item, err := domain.NewItem(name, 1)
+		if err != nil {
+			t.Fatalf("NewItem: %v", err)
+		}
+		if _, err := repo.AddWithNextPosition(ctx, item); err != nil {
+			t.Fatalf("AddWithNextPosition: %v", err)
+		}
+	}
+
+	search := "buy"
+	items, err := repo.All(ctx, nil, &search, nil, 1, 20, nil)
+	if err != nil {
+		t.Fatalf("All with LIKE fallback: %v", err)
+	}
+	if len(items) != 2 {
+		t.Errorf("expected 2 items matching 'buy' via LIKE fallback, got %d", len(items))
+	}
+}
+
+func TestCount_SearchFallbackLIKE(t *testing.T) {
+	db := setupTestDBWithoutFTS(t)
+	defer db.Close()
+
+	repo := New(db)
+	ctx := context.Background()
+
+	for _, name := range []string{"Buy milk", "Buy eggs", "Walk the dog"} {
+		item, err := domain.NewItem(name, 1)
+		if err != nil {
+			t.Fatalf("NewItem: %v", err)
+		}
+		if _, err := repo.AddWithNextPosition(ctx, item); err != nil {
+			t.Fatalf("AddWithNextPosition: %v", err)
+		}
+	}
+
+	search := "buy"
+	count, err := repo.Count(ctx, nil, &search)
+	if err != nil {
+		t.Fatalf("Count with LIKE fallback: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("expected count 2 for 'buy' via LIKE fallback, got %d", count)
+	}
+}
+
+func TestHasFTS_DetectsAbsence(t *testing.T) {
+	db := setupTestDBWithoutFTS(t)
+	defer db.Close()
+	repo := New(db)
+	if repo.hasFTS() {
+		t.Error("expected hasFTS() = false for DB without FTS5 table")
+	}
+}
+
+func TestHasFTS_DetectsPresence(t *testing.T) {
+	// This test requires FTS5 support — skip if not available
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	_, err = db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS item_fts USING fts5(name)`)
+	if err != nil {
+		t.Skipf("FTS5 not available, skipping: %v", err)
+	}
+	// Use the full setupTestDB which includes FTS5
+	dbFTS := setupTestDB(t)
+	defer dbFTS.Close()
+	repo := New(dbFTS)
+	if !repo.hasFTS() {
+		t.Error("expected hasFTS() = true for DB with FTS5 table")
+	}
+}
+
 func TestAddWithNextPosition_ConcurrentCreation_UniquePositions(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()

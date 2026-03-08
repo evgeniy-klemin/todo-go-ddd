@@ -71,26 +71,32 @@ func server(port int) {
 		panic(err)
 	}
 
-	// Create FTS5 virtual table for full-text search
+	// Create FTS5 virtual table for full-text search (optional — requires fts5 build tag)
 	if _, err := db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS item_fts USING fts5(name, content='item', content_rowid='rowid')`); err != nil {
-		panic(err)
-	}
-
-	// Triggers to keep FTS index in sync with item table
-	for _, stmt := range []string{
-		`CREATE TRIGGER IF NOT EXISTS item_ai AFTER INSERT ON item BEGIN
-			INSERT INTO item_fts(rowid, name) VALUES (new.rowid, new.name);
-		END`,
-		`CREATE TRIGGER IF NOT EXISTS item_ad AFTER DELETE ON item BEGIN
-			INSERT INTO item_fts(item_fts, rowid, name) VALUES('delete', old.rowid, old.name);
-		END`,
-		`CREATE TRIGGER IF NOT EXISTS item_au AFTER UPDATE ON item BEGIN
-			INSERT INTO item_fts(item_fts, rowid, name) VALUES('delete', old.rowid, old.name);
-			INSERT INTO item_fts(rowid, name) VALUES (new.rowid, new.name);
-		END`,
-	} {
-		if _, err := db.Exec(stmt); err != nil {
-			panic(err)
+		fmt.Fprintf(os.Stderr, "Warning: FTS5 not available, falling back to LIKE search: %v\n", err)
+		// Drop any stale FTS triggers from a previous run that had FTS5 enabled,
+		// otherwise INSERTs/UPDATEs/DELETEs on item will fail.
+		for _, name := range []string{"item_ai", "item_ad", "item_au"} {
+			db.Exec("DROP TRIGGER IF EXISTS " + name)
+		}
+	} else {
+		// Triggers to keep FTS index in sync with item table
+		for _, stmt := range []string{
+			`CREATE TRIGGER IF NOT EXISTS item_ai AFTER INSERT ON item BEGIN
+				INSERT INTO item_fts(rowid, name) VALUES (new.rowid, new.name);
+			END`,
+			`CREATE TRIGGER IF NOT EXISTS item_ad AFTER DELETE ON item BEGIN
+				INSERT INTO item_fts(item_fts, rowid, name) VALUES('delete', old.rowid, old.name);
+			END`,
+			`CREATE TRIGGER IF NOT EXISTS item_au AFTER UPDATE ON item BEGIN
+				INSERT INTO item_fts(item_fts, rowid, name) VALUES('delete', old.rowid, old.name);
+				INSERT INTO item_fts(rowid, name) VALUES (new.rowid, new.name);
+			END`,
+		} {
+			if _, err := db.Exec(stmt); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: Failed to create FTS trigger: %v\n", err)
+				break
+			}
 		}
 	}
 
@@ -125,7 +131,7 @@ func fixtures() {
 }
 
 func main() {
-	var port = flag.Int("port", 8080, "Port for test HTTP server")
+	var port = flag.Int("port", 3000, "Port for test HTTP server")
 	flag.Parse()
 
 	server(*port)

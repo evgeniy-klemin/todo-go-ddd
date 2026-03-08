@@ -17,14 +17,28 @@ import (
 )
 
 type Repository struct {
-	db *sql.DB
-	mu sync.Mutex
+	db         *sql.DB
+	mu         sync.Mutex
+	ftsEnabled *bool // cached detection result
 }
 
 func New(db *sql.DB) *Repository {
 	return &Repository{
 		db: db,
 	}
+}
+
+// hasFTS checks whether the item_fts virtual table exists (FTS5 is available).
+// The result is cached after the first call.
+func (r *Repository) hasFTS() bool {
+	if r.ftsEnabled != nil {
+		return *r.ftsEnabled
+	}
+	var name string
+	err := r.db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='item_fts'").Scan(&name)
+	result := err == nil && name == "item_fts"
+	r.ftsEnabled = &result
+	return result
 }
 
 func (r *Repository) maxPosition(ctx context.Context) (int, error) {
@@ -148,11 +162,15 @@ func (r *Repository) All(
 	}
 
 	if search != nil && *search != "" {
-		ftsQuery := buildFTSQuery(*search)
-		query = append(query, qm.Where(
-			"item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)",
-			ftsQuery,
-		))
+		if r.hasFTS() {
+			ftsQuery := buildFTSQuery(*search)
+			query = append(query, qm.Where(
+				"item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)",
+				ftsQuery,
+			))
+		} else {
+			query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
+		}
 	}
 
 	query = append(query, qm.Select(columns...))
@@ -200,11 +218,15 @@ func (r *Repository) Count(ctx context.Context, done *bool, search *string) (int
 	}
 
 	if search != nil && *search != "" {
-		ftsQuery := buildFTSQuery(*search)
-		query = append(query, qm.Where(
-			"item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)",
-			ftsQuery,
-		))
+		if r.hasFTS() {
+			ftsQuery := buildFTSQuery(*search)
+			query = append(query, qm.Where(
+				"item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)",
+				ftsQuery,
+			))
+		} else {
+			query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
+		}
 	}
 
 	count, err := models.Items(query...).Count(ctx, r.db)
