@@ -18,21 +18,26 @@ type ErrBadParams struct {
 
 // ItemPatch defines model for ItemPatch.
 type ItemPatch struct {
-	Done     *bool   `json:"done,omitempty"`
-	Name     *string `json:"name,omitempty"`
-	Position *int    `json:"position,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Done        *bool   `json:"done,omitempty"`
+	Name        *string `json:"name,omitempty"`
+	Position    *int    `json:"position,omitempty"`
 }
 
 // ItemPost defines model for ItemPost.
 type ItemPost struct {
-	Name     string `json:"name"`
-	Position *int   `json:"position,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Name        string  `json:"name"`
+	Position    *int    `json:"position,omitempty"`
 }
 
 // Todo item
 type ItemResponse struct {
 	// The date that the item was created.
 	CreatedAt *time.Time `json:"created_at,omitempty"`
+
+	// Item description
+	Description *string `json:"description,omitempty"`
 
 	// Done flag
 	Done *bool `json:"done,omitempty"`

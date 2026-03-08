@@ -23,42 +23,47 @@ import (
 
 // Item is an object representing the database table.
 type Item struct {
-	ID        string    `boil:"id" json:"id" toml:"id" yaml:"id"`
-	Name      string    `boil:"name" json:"name" toml:"name" yaml:"name"`
-	Position  int       `boil:"position" json:"position" toml:"position" yaml:"position"`
-	Done      bool      `boil:"done" json:"done" toml:"done" yaml:"done"`
-	CreatedAt time.Time `boil:"created_at" json:"created_at" toml:"created_at" yaml:"created_at"`
+	ID          string    `boil:"id" json:"id" toml:"id" yaml:"id"`
+	Name        string    `boil:"name" json:"name" toml:"name" yaml:"name"`
+	Description string    `boil:"description" json:"description" toml:"description" yaml:"description"`
+	Position    int       `boil:"position" json:"position" toml:"position" yaml:"position"`
+	Done        bool      `boil:"done" json:"done" toml:"done" yaml:"done"`
+	CreatedAt   time.Time `boil:"created_at" json:"created_at" toml:"created_at" yaml:"created_at"`
 
 	R *itemR `boil:"-" json:"-" toml:"-" yaml:"-"`
 	L itemL  `boil:"-" json:"-" toml:"-" yaml:"-"`
 }
 
 var ItemColumns = struct {
-	ID        string
-	Name      string
-	Position  string
-	Done      string
-	CreatedAt string
+	ID          string
+	Name        string
+	Description string
+	Position    string
+	Done        string
+	CreatedAt   string
 }{
-	ID:        "id",
-	Name:      "name",
-	Position:  "position",
-	Done:      "done",
-	CreatedAt: "created_at",
+	ID:          "id",
+	Name:        "name",
+	Description: "description",
+	Position:    "position",
+	Done:        "done",
+	CreatedAt:   "created_at",
 }
 
 var ItemTableColumns = struct {
-	ID        string
-	Name      string
-	Position  string
-	Done      string
-	CreatedAt string
+	ID          string
+	Name        string
+	Description string
+	Position    string
+	Done        string
+	CreatedAt   string
 }{
-	ID:        "item.id",
-	Name:      "item.name",
-	Position:  "item.position",
-	Done:      "item.done",
-	CreatedAt: "item.created_at",
+	ID:          "item.id",
+	Name:        "item.name",
+	Description: "item.description",
+	Position:    "item.position",
+	Done:        "item.done",
+	CreatedAt:   "item.created_at",
 }
 
 // Generated where
@@ -170,9 +175,9 @@ func (*itemR) NewStruct() *itemR {
 type itemL struct{}
 
 var (
-	itemAllColumns            = []string{"id", "name", "position", "done", "created_at"}
+	itemAllColumns            = []string{"id", "name", "description", "position", "done", "created_at"}
 	itemColumnsWithoutDefault = []string{"id", "name", "created_at"}
-	itemColumnsWithDefault    = []string{"position", "done"}
+	itemColumnsWithDefault    = []string{"description", "position", "done"}
 	itemPrimaryKeyColumns     = []string{"id"}
 	itemGeneratedColumns      = []string{}
 )

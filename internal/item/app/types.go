@@ -8,6 +8,7 @@ type ItemField int
 
 const (
 	ItemFieldName ItemField = iota + 1
+	ItemFieldDescription
 	ItemFieldPosition
 	ItemFieldDone
 	ItemFieldCreatedAt
@@ -15,17 +16,19 @@ const (
 
 var DefaultItemFields = []ItemField{
 	ItemFieldName,
+	ItemFieldDescription,
 	ItemFieldPosition,
 	ItemFieldDone,
 	ItemFieldCreatedAt,
 }
 
 type Item struct {
-	ID        string
-	Name      *string
-	Position  *int
-	Done      *bool
-	CreatedAt *time.Time
+	ID          string
+	Name        *string
+	Description *string
+	Position    *int
+	Done        *bool
+	CreatedAt   *time.Time
 }
 
 type SortDirection int

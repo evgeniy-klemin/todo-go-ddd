@@ -27,9 +27,9 @@ func (s *ItemService) GetItemByID(ctx context.Context, id string) (*domain.Item,
 	return s.domainRepository.GetByID(ctx, modelID)
 }
 
-func (s *ItemService) Create(ctx context.Context, name string, position *int) (*domain.Item, error) {
+func (s *ItemService) Create(ctx context.Context, name string, description string, position *int) (*domain.Item, error) {
 	if position != nil {
-		item, err := domain.NewItem(name, *position)
+		item, err := domain.NewItem(name, *position, description)
 		if err != nil {
 			slog.WarnContext(ctx, "NewItem validation failed", "name", name, "position", *position, "error", err)
 			return nil, err
@@ -45,7 +45,7 @@ func (s *ItemService) Create(ctx context.Context, name string, position *int) (*
 	}
 
 	// Auto-position: create with placeholder, repo will assign real position atomically
-	item, err := domain.NewItem(name, 1)
+	item, err := domain.NewItem(name, 1, description)
 	if err != nil {
 		slog.WarnContext(ctx, "NewItem validation failed", "name", name, "error", err)
 		return nil, err
@@ -94,6 +94,13 @@ func (s *ItemService) Update(ctx context.Context, reqItem *Item) (*domain.Item, 
 			if err := item.Rename(*reqItem.Name); err != nil {
 				return err
 			}
+		}
+		if reqItem.Description != nil {
+			desc, err := domain.NewDescription(*reqItem.Description)
+			if err != nil {
+				return err
+			}
+			item.ChangeDescription(desc)
 		}
 		return nil
 	})

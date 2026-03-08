@@ -69,17 +69,18 @@ func (r *Repository) getByID(ctx context.Context, executor boil.ContextExecutor,
 	if err != nil {
 		return nil, err
 	}
-	return domain.ReconstituteItem(modelID, item.Name, int(item.Position), item.Done, item.CreatedAt), nil
+	return domain.ReconstituteItem(modelID, item.Name, item.Description, int(item.Position), item.Done, item.CreatedAt), nil
 }
 
 func (r *Repository) Add(ctx context.Context, item *domain.Item) (*domain.Item, error) {
 	id := item.ID()
 	dbItem := models.Item{
-		ID:        id.String(),
-		Name:      item.Name().String(),
-		Position:  item.Position().Int(),
-		Done:      item.Done(),
-		CreatedAt: item.CreatedAt().UTC(),
+		ID:          id.String(),
+		Name:        item.Name().String(),
+		Description: item.Description().String(),
+		Position:    item.Position().Int(),
+		Done:        item.Done(),
+		CreatedAt:   item.CreatedAt().UTC(),
 	}
 	if err := dbItem.Insert(ctx, r.db, boil.Infer()); err != nil {
 		return nil, fmt.Errorf("insert item: %w", err)
@@ -100,6 +101,8 @@ func (r *Repository) All(
 		switch field {
 		case app.ItemFieldName:
 			columns = append(columns, models.ItemColumns.Name)
+		case app.ItemFieldDescription:
+			columns = append(columns, models.ItemColumns.Description)
 		case app.ItemFieldPosition:
 			columns = append(columns, models.ItemColumns.Position)
 		case app.ItemFieldDone:
@@ -120,6 +123,8 @@ func (r *Repository) All(
 		switch sortField.Field {
 		case app.ItemFieldName:
 			order = models.ItemColumns.Name
+		case app.ItemFieldDescription:
+			order = models.ItemColumns.Description
 		case app.ItemFieldPosition:
 			order = models.ItemColumns.Position
 		case app.ItemFieldDone:
@@ -148,7 +153,8 @@ func (r *Repository) All(
 	}
 
 	if search != nil && *search != "" {
-		query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
+		query = append(query, qm.InnerJoin("item_fts ON item.id = item_fts.item_id"))
+		query = append(query, qm.Where("item_fts MATCH ?", ftsSearchTerm(*search)))
 	}
 
 	query = append(query, qm.Select(columns...))
@@ -172,6 +178,8 @@ func (r *Repository) All(
 			switch field {
 			case app.ItemFieldName:
 				item.Name = &dbItem.Name
+			case app.ItemFieldDescription:
+				item.Description = &dbItem.Description
 			case app.ItemFieldPosition:
 				position := int(dbItem.Position)
 				item.Position = &position
@@ -196,11 +204,24 @@ func (r *Repository) Count(ctx context.Context, done *bool, search *string) (int
 	}
 
 	if search != nil && *search != "" {
-		query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
+		query = append(query, qm.InnerJoin("item_fts ON item.id = item_fts.item_id"))
+		query = append(query, qm.Where("item_fts MATCH ?", ftsSearchTerm(*search)))
 	}
 
 	count, err := models.Items(query...).Count(ctx, r.db)
 	return int(count), err
+}
+
+// ftsSearchTerm converts a user search string into an FTS5 query.
+// Each word gets a prefix wildcard (*) for partial matching.
+func ftsSearchTerm(search string) string {
+	words := strings.Fields(search)
+	for i, word := range words {
+		// Escape double quotes to prevent FTS5 syntax injection
+		word = strings.ReplaceAll(word, "\"", "")
+		words[i] = "\"" + word + "\"" + "*"
+	}
+	return strings.Join(words, " ")
 }
 
 func (r *Repository) Update(
@@ -227,11 +248,12 @@ func (r *Repository) Update(
 
 	itemID := domainItem.ID()
 	dbItem := &models.Item{
-		ID:        itemID.String(),
-		Name:      domainItem.Name().String(),
-		Position:  domainItem.Position().Int(),
-		Done:      domainItem.Done(),
-		CreatedAt: domainItem.CreatedAt(),
+		ID:          itemID.String(),
+		Name:        domainItem.Name().String(),
+		Description: domainItem.Description().String(),
+		Position:    domainItem.Position().Int(),
+		Done:        domainItem.Done(),
+		CreatedAt:   domainItem.CreatedAt(),
 	}
 	_, err = dbItem.Update(ctx, tx, boil.Blacklist(models.ItemColumns.CreatedAt))
 	if err != nil {

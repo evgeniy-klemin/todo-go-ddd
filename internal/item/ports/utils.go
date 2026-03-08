@@ -19,6 +19,8 @@ func getAppFieldsFromGetParam(fields *string) ([]app.ItemField, error) {
 				switch strField {
 				case "name":
 					field = app.ItemFieldName
+				case "description":
+					field = app.ItemFieldDescription
 				case "position":
 					field = app.ItemFieldPosition
 				case "done":
@@ -47,11 +49,12 @@ func appItemsToRespItems(appItems []app.Item) []ItemResponse {
 			respCreatedAt = &createdAt
 		}
 		res = append(res, ItemResponse{
-			Id:        appItem.ID,
-			Name:      appItem.Name,
-			Position:  appItem.Position,
-			Done:      appItem.Done,
-			CreatedAt: respCreatedAt,
+			Id:          appItem.ID,
+			Name:        appItem.Name,
+			Description: appItem.Description,
+			Position:    appItem.Position,
+			Done:        appItem.Done,
+			CreatedAt:   respCreatedAt,
 		})
 	}
 	return res
@@ -59,16 +62,18 @@ func appItemsToRespItems(appItems []app.Item) []ItemResponse {
 
 func domainItemToResp(domainItem *domain.Item) *ItemResponse {
 	name := domainItem.Name().String()
+	description := domainItem.Description().String()
 	position := domainItem.Position().Int()
 	done := domainItem.Done()
 	createdAt := domainItem.CreatedAt()
 	id := domainItem.ID()
 	return &ItemResponse{
-		Id:        id.String(),
-		Name:      &name,
-		Position:  &position,
-		Done:      &done,
-		CreatedAt: &createdAt,
+		Id:          id.String(),
+		Name:        &name,
+		Description: &description,
+		Position:    &position,
+		Done:        &done,
+		CreatedAt:   &createdAt,
 	}
 }
 
@@ -87,6 +92,8 @@ func getSortFieldsFromGetParam(sort *string) (app.SortFields, error) {
 				switch strField {
 				case "name":
 					field = app.ItemFieldName
+				case "description":
+					field = app.ItemFieldDescription
 				case "position":
 					field = app.ItemFieldPosition
 				case "done":

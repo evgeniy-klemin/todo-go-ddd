@@ -16,7 +16,7 @@ import (
 
 // ItemService defines the port that the HTTP handler requires from the application layer.
 type ItemService interface {
-	Create(ctx context.Context, name string, position *int) (*domain.Item, error)
+	Create(ctx context.Context, name string, description string, position *int) (*domain.Item, error)
 	GetItemByID(ctx context.Context, id string) (*domain.Item, error)
 	List(ctx context.Context, query app.ListQuery) (app.ListResult, error)
 	Update(ctx context.Context, reqItem *app.Item) (*domain.Item, error)
@@ -26,7 +26,7 @@ func httpError(ctx echo.Context, err error) error {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		return ctx.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
-	case errors.Is(err, domain.ErrNameLength), errors.Is(err, domain.ErrPositionValue):
+	case errors.Is(err, domain.ErrNameLength), errors.Is(err, domain.ErrDescriptionLength), errors.Is(err, domain.ErrPositionValue):
 		return ctx.JSON(http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 	default:
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "internal server error"})
@@ -103,7 +103,11 @@ func (h *HttpServer) PostItems(ctx echo.Context) error {
 		positionVal := int(*itemPost.Position)
 		position = &positionVal
 	}
-	item, err := h.itemService.Create(ctx.Request().Context(), itemPost.Name, position)
+	var description string
+	if itemPost.Description != nil {
+		description = *itemPost.Description
+	}
+	item, err := h.itemService.Create(ctx.Request().Context(), itemPost.Name, description, position)
 	if err != nil {
 		return httpError(ctx, err)
 	}
@@ -135,10 +139,11 @@ func (h *HttpServer) PatchItemsItemid(ctx echo.Context, itemId ItemId) error {
 	}
 
 	appItem := &app.Item{
-		ID:       string(itemId),
-		Name:     itemPatch.Name,
-		Position: itemPatch.Position,
-		Done:     itemPatch.Done,
+		ID:          string(itemId),
+		Name:        itemPatch.Name,
+		Description: itemPatch.Description,
+		Position:    itemPatch.Position,
+		Done:        itemPatch.Done,
 	}
 
 	item, err := h.itemService.Update(ctx.Request().Context(), appItem)

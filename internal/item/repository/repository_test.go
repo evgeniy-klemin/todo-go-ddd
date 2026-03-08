@@ -21,11 +21,27 @@ func setupTestDB(t *testing.T) *sql.DB {
 		CREATE TABLE item (
 			id VARCHAR(36) NOT NULL PRIMARY KEY,
 			name VARCHAR(1000) NOT NULL,
+			description TEXT DEFAULT '',
 			position INTEGER NOT NULL DEFAULT 1,
 			done BOOL NOT NULL DEFAULT FALSE,
 			created_at DATETIME NOT NULL
 		);
 		CREATE INDEX idx_item_position ON item (position);
+
+		CREATE VIRTUAL TABLE IF NOT EXISTS item_fts USING fts5(item_id UNINDEXED, name, description);
+
+		CREATE TRIGGER item_fts_ai AFTER INSERT ON item BEGIN
+			INSERT INTO item_fts(item_id, name, description) VALUES (new.id, new.name, COALESCE(new.description, ''));
+		END;
+
+		CREATE TRIGGER item_fts_ad AFTER DELETE ON item BEGIN
+			DELETE FROM item_fts WHERE item_id = old.id;
+		END;
+
+		CREATE TRIGGER item_fts_au AFTER UPDATE ON item BEGIN
+			DELETE FROM item_fts WHERE item_id = old.id;
+			INSERT INTO item_fts(item_id, name, description) VALUES (new.id, new.name, COALESCE(new.description, ''));
+		END;
 	`)
 	if err != nil {
 		t.Fatalf("create table: %v", err)
@@ -49,7 +65,7 @@ func TestAddWithNextPosition_ConcurrentCreation_UniquePositions(t *testing.T) {
 	for i := 0; i < numGoroutines; i++ {
 		go func(idx int) {
 			defer wg.Done()
-			item, err := domain.NewItem(fmt.Sprintf("Task %d", idx), 1) // placeholder position
+			item, err := domain.NewItem(fmt.Sprintf("Task %d", idx), 1, "") // placeholder position
 			if err != nil {
 				errs[idx] = fmt.Errorf("NewItem: %w", err)
 				return
@@ -97,7 +113,7 @@ func TestAddWithNextPosition_SequentialCreation_IncrementsPosition(t *testing.T)
 	ctx := context.Background()
 
 	for i := 1; i <= 5; i++ {
-		item, err := domain.NewItem(fmt.Sprintf("Task %d", i), 1)
+		item, err := domain.NewItem(fmt.Sprintf("Task %d", i), 1, "")
 		if err != nil {
 			t.Fatalf("NewItem: %v", err)
 		}
@@ -120,7 +136,7 @@ func TestAll_SearchReturnsMatchingItems(t *testing.T) {
 
 	// Insert test items
 	for _, name := range []string{"Buy milk", "Buy eggs", "Walk the dog", "Read a book"} {
-		item, err := domain.NewItem(name, 1)
+		item, err := domain.NewItem(name, 1, "")
 		if err != nil {
 			t.Fatalf("NewItem: %v", err)
 		}
@@ -146,7 +162,7 @@ func TestAll_SearchNoMatchReturnsEmpty(t *testing.T) {
 	repo := New(db)
 	ctx := context.Background()
 
-	item, err := domain.NewItem("Buy milk", 1)
+	item, err := domain.NewItem("Buy milk", 1, "")
 	if err != nil {
 		t.Fatalf("NewItem: %v", err)
 	}
@@ -171,7 +187,7 @@ func TestAll_SearchCaseInsensitive(t *testing.T) {
 	repo := New(db)
 	ctx := context.Background()
 
-	item, err := domain.NewItem("Buy Milk", 1)
+	item, err := domain.NewItem("Buy Milk", 1, "")
 	if err != nil {
 		t.Fatalf("NewItem: %v", err)
 	}
@@ -196,7 +212,7 @@ func TestAll_SearchPartialMatch(t *testing.T) {
 	repo := New(db)
 	ctx := context.Background()
 
-	item, err := domain.NewItem("Buy milk and eggs", 1)
+	item, err := domain.NewItem("Buy milk and eggs", 1, "")
 	if err != nil {
 		t.Fatalf("NewItem: %v", err)
 	}
@@ -222,7 +238,7 @@ func TestAll_NilSearchReturnsAll(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 1; i <= 3; i++ {
-		item, err := domain.NewItem(fmt.Sprintf("Task %d", i), 1)
+		item, err := domain.NewItem(fmt.Sprintf("Task %d", i), 1, "")
 		if err != nil {
 			t.Fatalf("NewItem: %v", err)
 		}
@@ -248,7 +264,7 @@ func TestCount_SearchFiltersCount(t *testing.T) {
 	ctx := context.Background()
 
 	for _, name := range []string{"Buy milk", "Buy eggs", "Walk the dog"} {
-		item, err := domain.NewItem(name, 1)
+		item, err := domain.NewItem(name, 1, "")
 		if err != nil {
 			t.Fatalf("NewItem: %v", err)
 		}
@@ -276,6 +292,144 @@ func TestCount_SearchFiltersCount(t *testing.T) {
 	}
 }
 
+func TestAll_FTS5SearchByDescription(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := New(db)
+	ctx := context.Background()
+
+	// Insert items with descriptions
+	item1, err := domain.NewItem("Buy milk", 1, "Get whole milk from the grocery store")
+	if err != nil {
+		t.Fatalf("NewItem: %v", err)
+	}
+	if _, err := repo.AddWithNextPosition(ctx, item1); err != nil {
+		t.Fatalf("AddWithNextPosition: %v", err)
+	}
+
+	item2, err := domain.NewItem("Walk the dog", 1, "Take Fido to the park")
+	if err != nil {
+		t.Fatalf("NewItem: %v", err)
+	}
+	if _, err := repo.AddWithNextPosition(ctx, item2); err != nil {
+		t.Fatalf("AddWithNextPosition: %v", err)
+	}
+
+	// Search by description content
+	search := "grocery"
+	items, err := repo.All(ctx, nil, &search, nil, 1, 20, nil)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(items) != 1 {
+		t.Errorf("expected 1 item matching 'grocery' in description, got %d", len(items))
+	}
+
+	// Search term in description of second item
+	search = "park"
+	items, err = repo.All(ctx, nil, &search, nil, 1, 20, nil)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(items) != 1 {
+		t.Errorf("expected 1 item matching 'park' in description, got %d", len(items))
+	}
+}
+
+func TestAll_FTS5SearchAcrossNameAndDescription(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := New(db)
+	ctx := context.Background()
+
+	item1, err := domain.NewItem("Buy milk", 1, "From the store")
+	if err != nil {
+		t.Fatalf("NewItem: %v", err)
+	}
+	if _, err := repo.AddWithNextPosition(ctx, item1); err != nil {
+		t.Fatalf("AddWithNextPosition: %v", err)
+	}
+
+	item2, err := domain.NewItem("Walk the dog", 1, "Buy treats first")
+	if err != nil {
+		t.Fatalf("NewItem: %v", err)
+	}
+	if _, err := repo.AddWithNextPosition(ctx, item2); err != nil {
+		t.Fatalf("AddWithNextPosition: %v", err)
+	}
+
+	// "buy" appears in name of item1 and description of item2
+	search := "buy"
+	items, err := repo.All(ctx, nil, &search, nil, 1, 20, nil)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(items) != 2 {
+		t.Errorf("expected 2 items matching 'buy' across name and description, got %d", len(items))
+	}
+}
+
+func TestAll_FTS5PrefixSearch(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := New(db)
+	ctx := context.Background()
+
+	item1, err := domain.NewItem("Programming task", 1, "Write unit tests")
+	if err != nil {
+		t.Fatalf("NewItem: %v", err)
+	}
+	if _, err := repo.AddWithNextPosition(ctx, item1); err != nil {
+		t.Fatalf("AddWithNextPosition: %v", err)
+	}
+
+	// Prefix search: "prog" should match "Programming"
+	search := "prog"
+	items, err := repo.All(ctx, nil, &search, nil, 1, 20, nil)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(items) != 1 {
+		t.Errorf("expected 1 item matching prefix 'prog', got %d", len(items))
+	}
+}
+
+func TestCount_FTS5SearchByDescription(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := New(db)
+	ctx := context.Background()
+
+	item1, err := domain.NewItem("Task A", 1, "Important deadline")
+	if err != nil {
+		t.Fatalf("NewItem: %v", err)
+	}
+	if _, err := repo.AddWithNextPosition(ctx, item1); err != nil {
+		t.Fatalf("AddWithNextPosition: %v", err)
+	}
+
+	item2, err := domain.NewItem("Task B", 1, "Low priority")
+	if err != nil {
+		t.Fatalf("NewItem: %v", err)
+	}
+	if _, err := repo.AddWithNextPosition(ctx, item2); err != nil {
+		t.Fatalf("AddWithNextPosition: %v", err)
+	}
+
+	search := "deadline"
+	count, err := repo.Count(ctx, nil, &search)
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected count 1 for 'deadline', got %d", count)
+	}
+}
+
 func TestAddWithNextPosition_WithExistingItems_ContinuesFromMax(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
@@ -284,7 +438,7 @@ func TestAddWithNextPosition_WithExistingItems_ContinuesFromMax(t *testing.T) {
 	ctx := context.Background()
 
 	// Insert an item with position 10 using regular Add
-	item1, err := domain.NewItem("Existing Task", 10)
+	item1, err := domain.NewItem("Existing Task", 10, "")
 	if err != nil {
 		t.Fatalf("NewItem: %v", err)
 	}
@@ -294,7 +448,7 @@ func TestAddWithNextPosition_WithExistingItems_ContinuesFromMax(t *testing.T) {
 	}
 
 	// Now use AddWithNextPosition — should get position 11
-	item2, err := domain.NewItem("New Task", 1)
+	item2, err := domain.NewItem("New Task", 1, "")
 	if err != nil {
 		t.Fatalf("NewItem: %v", err)
 	}

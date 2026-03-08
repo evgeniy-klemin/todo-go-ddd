@@ -22,14 +22,14 @@ func testTime() time.Time {
 // --- mock ItemService ---
 
 type mockService struct {
-	createFn  func(ctx context.Context, name string, position *int) (*domain.Item, error)
+	createFn  func(ctx context.Context, name string, description string, position *int) (*domain.Item, error)
 	getByIDFn func(ctx context.Context, id string) (*domain.Item, error)
 	updateFn  func(ctx context.Context, reqItem *app.Item) (*domain.Item, error)
 	listFn    func(ctx context.Context, query app.ListQuery) (app.ListResult, error)
 }
 
-func (m *mockService) Create(ctx context.Context, name string, position *int) (*domain.Item, error) {
-	return m.createFn(ctx, name, position)
+func (m *mockService) Create(ctx context.Context, name string, description string, position *int) (*domain.Item, error) {
+	return m.createFn(ctx, name, description, position)
 }
 func (m *mockService) GetItemByID(ctx context.Context, id string) (*domain.Item, error) {
 	return m.getByIDFn(ctx, id)
@@ -61,8 +61,8 @@ func newEchoContext(method, path, body string) (echo.Context, *httptest.Response
 func TestPostItems_Returns201OnSuccess(t *testing.T) {
 	id, _ := domain.NewModelID("00000000-0000-0000-0000-000000000001")
 	svc := &mockService{
-		createFn: func(_ context.Context, name string, position *int) (*domain.Item, error) {
-			return domain.ReconstituteItem(id, name, 1, false, testTime()), nil
+		createFn: func(_ context.Context, name string, description string, position *int) (*domain.Item, error) {
+			return domain.ReconstituteItem(id, name, description, 1, false, testTime()), nil
 		},
 	}
 
@@ -79,7 +79,7 @@ func TestPostItems_Returns201OnSuccess(t *testing.T) {
 
 func TestPostItems_InvalidName_Returns422(t *testing.T) {
 	svc := &mockService{
-		createFn: func(_ context.Context, name string, position *int) (*domain.Item, error) {
+		createFn: func(_ context.Context, name string, description string, position *int) (*domain.Item, error) {
 			return nil, domain.ErrNameLength
 		},
 	}
@@ -149,7 +149,7 @@ func TestPatchItemsItemid_DoneTrue_Returns200(t *testing.T) {
 	id, _ := domain.NewModelID("00000000-0000-0000-0000-000000000001")
 	svc := &mockService{
 		updateFn: func(_ context.Context, reqItem *app.Item) (*domain.Item, error) {
-			return domain.ReconstituteItem(id, "Task", 1, true, testTime()), nil
+			return domain.ReconstituteItem(id, "Task", "", 1, true, testTime()), nil
 		},
 	}
 

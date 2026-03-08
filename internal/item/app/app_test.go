@@ -92,7 +92,7 @@ func TestCreate_WithExplicitPosition_CallsAdd(t *testing.T) {
 
 	svc := newService(domainRepo, &mockQueryRepository{})
 
-	item, err := svc.Create(context.Background(), "Task 1", intPtr(5))
+	item, err := svc.Create(context.Background(), "Task 1", "", intPtr(5))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestCreate_WithoutPosition_CallsAddWithNextPosition(t *testing.T) {
 
 	svc := newService(domainRepo, &mockQueryRepository{})
 
-	item, err := svc.Create(context.Background(), "Task 2", nil)
+	item, err := svc.Create(context.Background(), "Task 2", "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestCreate_WithoutPosition_CallsAddWithNextPosition(t *testing.T) {
 func TestCreate_EmptyName_ReturnsValidationError(t *testing.T) {
 	svc := newService(&mockDomainRepository{}, &mockQueryRepository{})
 
-	_, err := svc.Create(context.Background(), "", intPtr(1))
+	_, err := svc.Create(context.Background(), "", "", intPtr(1))
 	if err == nil {
 		t.Fatal("expected validation error for empty name, got nil")
 	}
@@ -158,7 +158,7 @@ func TestCreate_NameTooLong_ReturnsValidationError(t *testing.T) {
 	longName := strings.Repeat("a", domain.NameMaxLength+1)
 	svc := newService(&mockDomainRepository{}, &mockQueryRepository{})
 
-	_, err := svc.Create(context.Background(), longName, intPtr(1))
+	_, err := svc.Create(context.Background(), longName, "", intPtr(1))
 	if err == nil {
 		t.Fatal("expected validation error for long name, got nil")
 	}
@@ -177,7 +177,7 @@ func TestCreate_AddWithNextPositionError_Propagated(t *testing.T) {
 
 	svc := newService(domainRepo, &mockQueryRepository{})
 
-	_, err := svc.Create(context.Background(), "Task 4", nil)
+	_, err := svc.Create(context.Background(), "Task 4", "", nil)
 	if !errors.Is(err, repoErr) {
 		t.Errorf("expected repo error to be propagated, got: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestCreate_DomainRepositoryAddError_Propagated(t *testing.T) {
 
 	svc := newService(domainRepo, &mockQueryRepository{})
 
-	_, err := svc.Create(context.Background(), "Task 5", intPtr(2))
+	_, err := svc.Create(context.Background(), "Task 5", "", intPtr(2))
 	if !errors.Is(err, addErr) {
 		t.Errorf("expected add error to be propagated, got: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestUpdate_SetDoneTrue_CallsComplete(t *testing.T) {
 	id, _ := domain.NewModelID("00000000-0000-0000-0000-000000000001")
 	domainRepo := &mockDomainRepository{
 		updateFn: func(_ context.Context, _ domain.ModelID, updater func(*domain.Item) error) (*domain.Item, error) {
-			item := domain.ReconstituteItem(id, "Task", 1, false, testTime())
+			item := domain.ReconstituteItem(id, "Task", "", 1, false, testTime())
 			if err := updater(item); err != nil {
 				return nil, err
 			}
@@ -230,7 +230,7 @@ func TestUpdate_SetDoneFalse_CallsUncomplete(t *testing.T) {
 	id, _ := domain.NewModelID("00000000-0000-0000-0000-000000000001")
 	domainRepo := &mockDomainRepository{
 		updateFn: func(_ context.Context, _ domain.ModelID, updater func(*domain.Item) error) (*domain.Item, error) {
-			item := domain.ReconstituteItem(id, "Task", 1, true, testTime())
+			item := domain.ReconstituteItem(id, "Task", "", 1, true, testTime())
 			if err := updater(item); err != nil {
 				return nil, err
 			}
