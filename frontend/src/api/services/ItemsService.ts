@@ -103,6 +103,7 @@ export class ItemsService {
         sort?: string,
         fields?: string,
         done?: boolean,
+        q?: string,
         requestBody?: any,
     ): CancelablePromise<ItemsResponse> {
         return __request(OpenAPI, {
@@ -114,6 +115,7 @@ export class ItemsService {
                 '_sort': sort,
                 '_fields': fields,
                 'done': done,
+                'q': q,
             },
             body: requestBody,
             mediaType: 'application/json',

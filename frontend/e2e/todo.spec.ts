@@ -13,7 +13,7 @@ test.describe('Todo App', () => {
     const itemName = `Test item ${Date.now()}`;
 
     // Fill the input and submit the form
-    const input = page.locator('input[type="text"]');
+    const input = page.locator('input[placeholder="What needs to be done?"]');
     await input.fill(itemName);
     await page.locator('button[type="submit"]').click();
 
@@ -27,14 +27,14 @@ test.describe('Todo App', () => {
   });
 
   test('should enable Add button when input has text', async ({ page }) => {
-    const input = page.locator('input[type="text"]');
+    const input = page.locator('input[placeholder="What needs to be done?"]');
     await input.fill('Something');
     const addButton = page.locator('button[type="submit"]');
     await expect(addButton).toBeEnabled();
   });
 
   test('should clear input after adding an item', async ({ page }) => {
-    const input = page.locator('input[type="text"]');
+    const input = page.locator('input[placeholder="What needs to be done?"]');
     const itemName = `Clear test ${Date.now()}`;
     await input.fill(itemName);
     await page.locator('button[type="submit"]').click();
@@ -48,7 +48,7 @@ test.describe('Todo App', () => {
     const itemName = `Done test ${Date.now()}`;
 
     // Create item
-    await page.locator('input[type="text"]').fill(itemName);
+    await page.locator('input[placeholder="What needs to be done?"]').fill(itemName);
     await page.locator('button[type="submit"]').click();
     await expect(page.locator(`text=${itemName}`)).toBeVisible({ timeout: 5000 });
 
@@ -66,11 +66,11 @@ test.describe('Todo App', () => {
     const doneName = `Done ${unique}`;
 
     // Create two items
-    await page.locator('input[type="text"]').fill(activeName);
+    await page.locator('input[placeholder="What needs to be done?"]').fill(activeName);
     await page.locator('button[type="submit"]').click();
     await expect(page.locator(`text=${activeName}`)).toBeVisible({ timeout: 5000 });
 
-    await page.locator('input[type="text"]').fill(doneName);
+    await page.locator('input[placeholder="What needs to be done?"]').fill(doneName);
     await page.locator('button[type="submit"]').click();
     await expect(page.locator(`text=${doneName}`)).toBeVisible({ timeout: 5000 });
 
@@ -95,9 +95,37 @@ test.describe('Todo App', () => {
     await expect(page.locator(`li >> text=${doneName}`)).toBeVisible({ timeout: 5000 });
   });
 
+  test('should search items by name', async ({ page }) => {
+    const unique = Date.now().toString();
+
+    // Create items
+    await page.locator('input[placeholder="What needs to be done?"]').fill(`Buy milk ${unique}`);
+    await page.locator('button[type="submit"]').click();
+    await expect(page.locator(`text=Buy milk ${unique}`)).toBeVisible({ timeout: 5000 });
+
+    await page.locator('input[placeholder="What needs to be done?"]').fill(`Walk dog ${unique}`);
+    await page.locator('button[type="submit"]').click();
+    await expect(page.locator(`text=Walk dog ${unique}`)).toBeVisible({ timeout: 5000 });
+
+    // Search for "Buy" - use the search input (placeholder "Search...")
+    const searchInput = page.locator('input[placeholder="Search..."]');
+    await searchInput.fill('Buy');
+
+    // Wait for filtered results
+    await expect(page.locator(`li >> text=Buy milk ${unique}`)).toBeVisible({ timeout: 5000 });
+    await expect(page.locator(`li >> text=Walk dog ${unique}`)).not.toBeVisible({ timeout: 5000 });
+
+    // Clear search
+    await searchInput.fill('');
+
+    // All items should be visible again
+    await expect(page.locator(`li >> text=Buy milk ${unique}`)).toBeVisible({ timeout: 5000 });
+    await expect(page.locator(`li >> text=Walk dog ${unique}`)).toBeVisible({ timeout: 5000 });
+  });
+
   test('should show item count in footer', async ({ page }) => {
     const itemName = `Count test ${Date.now()}`;
-    await page.locator('input[type="text"]').fill(itemName);
+    await page.locator('input[placeholder="What needs to be done?"]').fill(itemName);
     await page.locator('button[type="submit"]').click();
     await expect(page.locator(`text=${itemName}`)).toBeVisible({ timeout: 5000 });
 
