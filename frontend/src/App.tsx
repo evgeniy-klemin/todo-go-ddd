@@ -96,6 +96,7 @@ function App() {
               <input
                 type="text"
                 placeholder="Search..."
+                aria-label="Search items"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-8 text-sm text-slate-700 placeholder:text-slate-300 outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
