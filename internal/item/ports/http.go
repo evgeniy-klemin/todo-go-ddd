@@ -3,6 +3,7 @@
 package ports
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -12,6 +13,14 @@ import (
 	"github.com/evgeniy-klemin/todo/internal/item/app"
 	"github.com/evgeniy-klemin/todo/internal/item/domain"
 )
+
+// ItemService defines the port that the HTTP handler requires from the application layer.
+type ItemService interface {
+	Create(ctx context.Context, name string, position *int) (*domain.Item, error)
+	GetItemByID(ctx context.Context, id string) (*domain.Item, error)
+	List(ctx context.Context, query app.ListQuery) (app.ListResult, error)
+	Update(ctx context.Context, reqItem *app.Item) (*domain.Item, error)
+}
 
 func httpError(ctx echo.Context, err error) error {
 	switch {
@@ -25,10 +34,10 @@ func httpError(ctx echo.Context, err error) error {
 }
 
 type HttpServer struct {
-	itemService app.Service
+	itemService ItemService
 }
 
-func NewHttpServer(itemService app.Service) *HttpServer {
+func NewHttpServer(itemService ItemService) *HttpServer {
 	return &HttpServer{
 		itemService: itemService,
 	}

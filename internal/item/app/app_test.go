@@ -39,23 +39,23 @@ func (m *mockDomainRepository) Update(ctx context.Context, id domain.ModelID, up
 	return nil, nil
 }
 
-type mockAppRepository struct {
-	allFn          func(ctx context.Context, done *bool, fields []ItemField, page, perPage int, sortFields SortFields) ([]Item, error)
-	maxPositionFn  func(ctx context.Context) (int, error)
+type mockQueryRepository struct {
+	allFn         func(ctx context.Context, done *bool, fields []ItemField, page, perPage int, sortFields SortFields) ([]Item, error)
+	maxPositionFn func(ctx context.Context) (int, error)
 }
 
-func (m *mockAppRepository) All(ctx context.Context, done *bool, fields []ItemField, page, perPage int, sortFields SortFields) ([]Item, error) {
+func (m *mockQueryRepository) All(ctx context.Context, done *bool, fields []ItemField, page, perPage int, sortFields SortFields) ([]Item, error) {
 	if m.allFn != nil {
 		return m.allFn(ctx, done, fields, page, perPage, sortFields)
 	}
 	return nil, nil
 }
 
-func (m *mockAppRepository) Count(ctx context.Context, done *bool) (int, error) {
+func (m *mockQueryRepository) Count(ctx context.Context, done *bool) (int, error) {
 	return 0, nil
 }
 
-func (m *mockAppRepository) MaxPosition(ctx context.Context) (int, error) {
+func (m *mockQueryRepository) MaxPosition(ctx context.Context) (int, error) {
 	if m.maxPositionFn != nil {
 		return m.maxPositionFn(ctx)
 	}
@@ -66,73 +66,73 @@ func (m *mockAppRepository) MaxPosition(ctx context.Context) (int, error) {
 
 func intPtr(v int) *int { return &v }
 
-func newService(domainRepo domain.Repository, appRepo Repository) *ItemService {
-	return NewItemService(domainRepo, appRepo)
+func newService(domainRepo domain.Repository, queryRepo QueryRepository) *ItemService {
+	return NewItemService(domainRepo, queryRepo)
 }
 
 // --- tests ---
 
 func TestCreate_WithExplicitPosition(t *testing.T) {
-	appRepoCallCount := 0
-	appRepo := &mockAppRepository{
+	queryRepoCallCount := 0
+	queryRepo := &mockQueryRepository{
 		allFn: func(_ context.Context, _ *bool, _ []ItemField, _, _ int, _ SortFields) ([]Item, error) {
-			appRepoCallCount++
+			queryRepoCallCount++
 			return nil, nil
 		},
 	}
 
-	svc := newService(&mockDomainRepository{}, appRepo)
+	svc := newService(&mockDomainRepository{}, queryRepo)
 
 	item, err := svc.Create(context.Background(), "Task 1", intPtr(5))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if item.Position != 5 {
-		t.Errorf("expected position 5, got %d", item.Position)
+	if item.Position().Int() != 5 {
+		t.Errorf("expected position 5, got %d", item.Position().Int())
 	}
-	if appRepoCallCount != 0 {
-		t.Errorf("appRepository.All should not be called when position is provided")
+	if queryRepoCallCount != 0 {
+		t.Errorf("queryRepository.All should not be called when position is provided")
 	}
 }
 
 func TestCreate_WithoutPosition_UsesMaxPlusOne(t *testing.T) {
-	appRepo := &mockAppRepository{
+	queryRepo := &mockQueryRepository{
 		maxPositionFn: func(_ context.Context) (int, error) {
 			return 7, nil
 		},
 	}
 
-	svc := newService(&mockDomainRepository{}, appRepo)
+	svc := newService(&mockDomainRepository{}, queryRepo)
 
 	item, err := svc.Create(context.Background(), "Task 2", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if item.Position != 8 {
-		t.Errorf("expected position 8, got %d", item.Position)
+	if item.Position().Int() != 8 {
+		t.Errorf("expected position 8, got %d", item.Position().Int())
 	}
 }
 
 func TestCreate_WithoutPosition_NoExistingItems_PositionIsOne(t *testing.T) {
-	appRepo := &mockAppRepository{
+	queryRepo := &mockQueryRepository{
 		maxPositionFn: func(_ context.Context) (int, error) {
 			return 0, nil
 		},
 	}
 
-	svc := newService(&mockDomainRepository{}, appRepo)
+	svc := newService(&mockDomainRepository{}, queryRepo)
 
 	item, err := svc.Create(context.Background(), "Task 3", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if item.Position != 1 {
-		t.Errorf("expected position 1, got %d", item.Position)
+	if item.Position().Int() != 1 {
+		t.Errorf("expected position 1, got %d", item.Position().Int())
 	}
 }
 
 func TestCreate_EmptyName_ReturnsValidationError(t *testing.T) {
-	svc := newService(&mockDomainRepository{}, &mockAppRepository{})
+	svc := newService(&mockDomainRepository{}, &mockQueryRepository{})
 
 	_, err := svc.Create(context.Background(), "", intPtr(1))
 	if err == nil {
@@ -145,7 +145,7 @@ func TestCreate_EmptyName_ReturnsValidationError(t *testing.T) {
 
 func TestCreate_NameTooLong_ReturnsValidationError(t *testing.T) {
 	longName := strings.Repeat("a", domain.NameMaxLength+1)
-	svc := newService(&mockDomainRepository{}, &mockAppRepository{})
+	svc := newService(&mockDomainRepository{}, &mockQueryRepository{})
 
 	_, err := svc.Create(context.Background(), longName, intPtr(1))
 	if err == nil {
@@ -156,15 +156,15 @@ func TestCreate_NameTooLong_ReturnsValidationError(t *testing.T) {
 	}
 }
 
-func TestCreate_AppRepositoryMaxPositionError_Propagated(t *testing.T) {
+func TestCreate_QueryRepositoryMaxPositionError_Propagated(t *testing.T) {
 	repoErr := errors.New("db connection lost")
-	appRepo := &mockAppRepository{
+	queryRepo := &mockQueryRepository{
 		maxPositionFn: func(_ context.Context) (int, error) {
 			return 0, repoErr
 		},
 	}
 
-	svc := newService(&mockDomainRepository{}, appRepo)
+	svc := newService(&mockDomainRepository{}, queryRepo)
 
 	_, err := svc.Create(context.Background(), "Task 4", nil)
 	if !errors.Is(err, repoErr) {
@@ -180,7 +180,7 @@ func TestCreate_DomainRepositoryAddError_Propagated(t *testing.T) {
 		},
 	}
 
-	svc := newService(domainRepo, &mockAppRepository{})
+	svc := newService(domainRepo, &mockQueryRepository{})
 
 	_, err := svc.Create(context.Background(), "Task 5", intPtr(2))
 	if !errors.Is(err, addErr) {
@@ -190,14 +190,14 @@ func TestCreate_DomainRepositoryAddError_Propagated(t *testing.T) {
 
 func TestCreate_WithExplicitPosition_MaxPositionNotCalled(t *testing.T) {
 	maxPositionCalled := false
-	appRepo := &mockAppRepository{
+	queryRepo := &mockQueryRepository{
 		maxPositionFn: func(_ context.Context) (int, error) {
 			maxPositionCalled = true
 			return 0, nil
 		},
 	}
 
-	svc := newService(&mockDomainRepository{}, appRepo)
+	svc := newService(&mockDomainRepository{}, queryRepo)
 	_, _ = svc.Create(context.Background(), "Task", intPtr(3))
 
 	if maxPositionCalled {
@@ -219,7 +219,7 @@ func TestUpdate_SetDoneTrue_CallsComplete(t *testing.T) {
 		},
 	}
 
-	svc := newService(domainRepo, &mockAppRepository{})
+	svc := newService(domainRepo, &mockQueryRepository{})
 	result, err := svc.Update(context.Background(), &Item{
 		ID:   "00000000-0000-0000-0000-000000000001",
 		Done: boolPtr(true),
@@ -227,7 +227,7 @@ func TestUpdate_SetDoneTrue_CallsComplete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !result.Done {
+	if !result.Done() {
 		t.Error("expected Done to be true after update")
 	}
 }
@@ -244,7 +244,7 @@ func TestUpdate_SetDoneFalse_CallsUncomplete(t *testing.T) {
 		},
 	}
 
-	svc := newService(domainRepo, &mockAppRepository{})
+	svc := newService(domainRepo, &mockQueryRepository{})
 	result, err := svc.Update(context.Background(), &Item{
 		ID:   "00000000-0000-0000-0000-000000000001",
 		Done: boolPtr(false),
@@ -252,13 +252,13 @@ func TestUpdate_SetDoneFalse_CallsUncomplete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Done {
+	if result.Done() {
 		t.Error("expected Done to be false after update")
 	}
 }
 
 func TestUpdate_InvalidID_ReturnsError(t *testing.T) {
-	svc := newService(&mockDomainRepository{}, &mockAppRepository{})
+	svc := newService(&mockDomainRepository{}, &mockQueryRepository{})
 	_, err := svc.Update(context.Background(), &Item{
 		ID:   "short",
 		Done: boolPtr(true),

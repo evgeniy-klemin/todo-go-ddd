@@ -19,7 +19,7 @@ func testTime() time.Time {
 	return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 }
 
-// --- mock app.Service ---
+// --- mock ItemService ---
 
 type mockService struct {
 	createFn  func(ctx context.Context, name string, position *int) (*domain.Item, error)
@@ -44,7 +44,7 @@ func (m *mockService) List(ctx context.Context, query app.ListQuery) (app.ListRe
 	return app.ListResult{}, nil
 }
 
-func newTestServer(svc app.Service) *HttpServer {
+func newTestServer(svc ItemService) *HttpServer {
 	return NewHttpServer(svc)
 }
 
@@ -62,9 +62,7 @@ func TestPostItems_Returns201OnSuccess(t *testing.T) {
 	id, _ := domain.NewModelID("00000000-0000-0000-0000-000000000001")
 	svc := &mockService{
 		createFn: func(_ context.Context, name string, position *int) (*domain.Item, error) {
-			item, _ := domain.NewItem(name, 1)
-			item.ID = id
-			return item, nil
+			return domain.ReconstituteItem(id, name, 1, false, testTime()), nil
 		},
 	}
 

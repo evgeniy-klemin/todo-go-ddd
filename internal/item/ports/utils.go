@@ -58,12 +58,17 @@ func appItemsToRespItems(appItems []app.Item) []ItemResponse {
 }
 
 func domainItemToResp(domainItem *domain.Item) *ItemResponse {
+	name := domainItem.Name().String()
+	position := domainItem.Position().Int()
+	done := domainItem.Done()
+	createdAt := domainItem.CreatedAt()
+	id := domainItem.ID()
 	return &ItemResponse{
-		Id:        domainItem.ID.String(),
-		Name:      &domainItem.Name,
-		Position:  &domainItem.Position,
-		Done:      &domainItem.Done,
-		CreatedAt: &domainItem.CreatedAt,
+		Id:        id.String(),
+		Name:      &name,
+		Position:  &position,
+		Done:      &done,
+		CreatedAt: &createdAt,
 	}
 }
 

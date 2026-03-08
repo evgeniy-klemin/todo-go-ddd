@@ -9,13 +9,13 @@ import (
 
 type ItemService struct {
 	domainRepository domain.Repository
-	appRepository    Repository
+	queryRepository  QueryRepository
 }
 
-func NewItemService(domainRepository domain.Repository, appRepository Repository) *ItemService {
+func NewItemService(domainRepository domain.Repository, queryRepository QueryRepository) *ItemService {
 	return &ItemService{
 		domainRepository: domainRepository,
-		appRepository:    appRepository,
+		queryRepository:  queryRepository,
 	}
 }
 
@@ -43,7 +43,8 @@ func (s *ItemService) Create(ctx context.Context, name string, position *int) (*
 		slog.ErrorContext(ctx, "domainRepository.Add failed", "error", err)
 		return nil, err
 	}
-	slog.InfoContext(ctx, "item created", "id", result.ID.String(), "position", result.Position)
+	resultID := result.ID()
+	slog.InfoContext(ctx, "item created", "id", resultID.String(), "position", result.Position().Int())
 	return result, nil
 }
 
@@ -51,7 +52,7 @@ func (s *ItemService) resolvePosition(ctx context.Context, position *int) (int, 
 	if position != nil {
 		return *position, nil
 	}
-	max, err := s.appRepository.MaxPosition(ctx)
+	max, err := s.queryRepository.MaxPosition(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -59,11 +60,11 @@ func (s *ItemService) resolvePosition(ctx context.Context, position *int) (int, 
 }
 
 func (s *ItemService) List(ctx context.Context, query ListQuery) (ListResult, error) {
-	count, err := s.appRepository.Count(ctx, query.Done)
+	count, err := s.queryRepository.Count(ctx, query.Done)
 	if err != nil {
 		return ListResult{}, err
 	}
-	items, err := s.appRepository.All(ctx, query.Done, query.Fields, query.Page, query.PerPage, query.SortFields)
+	items, err := s.queryRepository.All(ctx, query.Done, query.Fields, query.Page, query.PerPage, query.SortFields)
 	if err != nil {
 		return ListResult{}, err
 	}

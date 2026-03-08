@@ -51,50 +51,20 @@ func (r *Repository) getByID(ctx context.Context, executor boil.ContextExecutor,
 	if err != nil {
 		return nil, err
 	}
-	return &domain.Item{
-		ID:        modelID,
-		Name:      item.Name,
-		Position:  int(item.Position),
-		Done:      item.Done,
-		CreatedAt: item.CreatedAt,
-	}, nil
+	return domain.ReconstituteItem(modelID, item.Name, int(item.Position), item.Done, item.CreatedAt), nil
 }
 
 func (r *Repository) Add(ctx context.Context, item *domain.Item) (*domain.Item, error) {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	// Вычисляем позицию атомарно внутри транзакции если она не задана явно (position == 0 не используется — PositionMin=1).
-	// Если клиент передал position > 0, используем её напрямую.
-	position := item.Position
-	if position == 0 {
-		type res struct {
-			Max sql.NullInt64 `boil:"max"`
-		}
-		var r2 res
-		if err := queries.Raw("SELECT COALESCE(MAX(position), 0) as max FROM item").Bind(ctx, tx, &r2); err != nil {
-			return nil, fmt.Errorf("get max position: %w", err)
-		}
-		position = int(r2.Max.Int64) + 1
-		item.Position = position
-	}
-
+	id := item.ID()
 	dbItem := models.Item{
-		ID:        item.ID.String(),
-		Name:      item.Name,
-		Position:  item.Position,
-		Done:      item.Done,
-		CreatedAt: item.CreatedAt.UTC(),
+		ID:        id.String(),
+		Name:      item.Name().String(),
+		Position:  item.Position().Int(),
+		Done:      item.Done(),
+		CreatedAt: item.CreatedAt().UTC(),
 	}
-	if err := dbItem.Insert(ctx, tx, boil.Infer()); err != nil {
+	if err := dbItem.Insert(ctx, r.db, boil.Infer()); err != nil {
 		return nil, fmt.Errorf("insert item: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit tx: %w", err)
 	}
 	return item, nil
 }
@@ -228,12 +198,13 @@ func (r *Repository) Update(
 		return nil, err
 	}
 
+	itemID := domainItem.ID()
 	dbItem := &models.Item{
-		ID:        domainItem.ID.String(),
-		Name:      domainItem.Name,
-		Position:  domainItem.Position,
-		Done:      domainItem.Done,
-		CreatedAt: domainItem.CreatedAt,
+		ID:        itemID.String(),
+		Name:      domainItem.Name().String(),
+		Position:  domainItem.Position().Int(),
+		Done:      domainItem.Done(),
+		CreatedAt: domainItem.CreatedAt(),
 	}
 	_, err = dbItem.Update(ctx, tx, boil.Blacklist(models.ItemColumns.CreatedAt))
 	if err != nil {
