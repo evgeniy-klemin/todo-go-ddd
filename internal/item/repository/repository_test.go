@@ -12,16 +12,17 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func setupTestDB(t *testing.T) *sql.DB {
+func setupTestDB(t *testing.T) (*sql.DB, bool) {
 	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	if _, err := schema.ApplyAll(db); err != nil {
+	ftsEnabled, err := schema.ApplyAll(db, "sqlite3")
+	if err != nil {
 		t.Fatalf("apply schema: %v", err)
 	}
-	return db
+	return db, ftsEnabled
 }
 
 func setupTestDBWithoutFTS(t *testing.T) *sql.DB {
@@ -54,9 +55,12 @@ func insertItems(t *testing.T, repo *Repository, names ...string) {
 func TestSearch(t *testing.T) {
 	t.Run("FTS5", func(t *testing.T) {
 		t.Run("ReturnsMatchingItems", func(t *testing.T) {
-			db := setupTestDB(t)
+			db, ftsEnabled := setupTestDB(t)
 			defer db.Close()
-			repo := New(db)
+			if !ftsEnabled {
+				t.Skip("FTS5 not available")
+			}
+			repo := New(db, true)
 			insertItems(t, repo, "Buy milk", "Buy eggs", "Walk the dog", "Read a book")
 
 			search := "buy"
@@ -70,9 +74,12 @@ func TestSearch(t *testing.T) {
 		})
 
 		t.Run("NoMatch", func(t *testing.T) {
-			db := setupTestDB(t)
+			db, ftsEnabled := setupTestDB(t)
 			defer db.Close()
-			repo := New(db)
+			if !ftsEnabled {
+				t.Skip("FTS5 not available")
+			}
+			repo := New(db, true)
 			insertItems(t, repo, "Buy milk")
 
 			search := "xyz"
@@ -86,9 +93,12 @@ func TestSearch(t *testing.T) {
 		})
 
 		t.Run("CaseInsensitive", func(t *testing.T) {
-			db := setupTestDB(t)
+			db, ftsEnabled := setupTestDB(t)
 			defer db.Close()
-			repo := New(db)
+			if !ftsEnabled {
+				t.Skip("FTS5 not available")
+			}
+			repo := New(db, true)
 			insertItems(t, repo, "Buy Milk")
 
 			search := "buy milk"
@@ -102,9 +112,12 @@ func TestSearch(t *testing.T) {
 		})
 
 		t.Run("PartialMatch", func(t *testing.T) {
-			db := setupTestDB(t)
+			db, ftsEnabled := setupTestDB(t)
 			defer db.Close()
-			repo := New(db)
+			if !ftsEnabled {
+				t.Skip("FTS5 not available")
+			}
+			repo := New(db, true)
 			insertItems(t, repo, "Buy milk and eggs")
 
 			search := "milk"
@@ -118,9 +131,12 @@ func TestSearch(t *testing.T) {
 		})
 
 		t.Run("PrefixMatch", func(t *testing.T) {
-			db := setupTestDB(t)
+			db, ftsEnabled := setupTestDB(t)
 			defer db.Close()
-			repo := New(db)
+			if !ftsEnabled {
+				t.Skip("FTS5 not available")
+			}
+			repo := New(db, true)
 			insertItems(t, repo, "Buying groceries", "Buy milk", "Walk the dog")
 
 			search := "buy"
@@ -134,9 +150,12 @@ func TestSearch(t *testing.T) {
 		})
 
 		t.Run("MultipleWords", func(t *testing.T) {
-			db := setupTestDB(t)
+			db, ftsEnabled := setupTestDB(t)
 			defer db.Close()
-			repo := New(db)
+			if !ftsEnabled {
+				t.Skip("FTS5 not available")
+			}
+			repo := New(db, true)
 			insertItems(t, repo, "Buy milk and eggs", "Buy bread", "Get milk")
 
 			search := "buy milk"
@@ -150,9 +169,12 @@ func TestSearch(t *testing.T) {
 		})
 
 		t.Run("NilSearchReturnsAll", func(t *testing.T) {
-			db := setupTestDB(t)
+			db, ftsEnabled := setupTestDB(t)
 			defer db.Close()
-			repo := New(db)
+			if !ftsEnabled {
+				t.Skip("FTS5 not available")
+			}
+			repo := New(db, true)
 			insertItems(t, repo, "Task 1", "Task 2", "Task 3")
 
 			items, err := repo.All(context.Background(), nil, nil, nil, 1, 20, nil)
@@ -169,7 +191,7 @@ func TestSearch(t *testing.T) {
 		t.Run("LIKESearch", func(t *testing.T) {
 			db := setupTestDBWithoutFTS(t)
 			defer db.Close()
-			repo := New(db)
+			repo := New(db, false)
 			insertItems(t, repo, "Buy milk", "Buy eggs", "Walk the dog", "Read a book")
 
 			search := "buy"
@@ -185,7 +207,7 @@ func TestSearch(t *testing.T) {
 		t.Run("LIKECount", func(t *testing.T) {
 			db := setupTestDBWithoutFTS(t)
 			defer db.Close()
-			repo := New(db)
+			repo := New(db, false)
 			insertItems(t, repo, "Buy milk", "Buy eggs", "Walk the dog")
 
 			search := "buy"
@@ -220,9 +242,9 @@ func TestSearch(t *testing.T) {
 
 func TestCount(t *testing.T) {
 	t.Run("SearchFiltersCount", func(t *testing.T) {
-		db := setupTestDB(t)
+		db, ftsEnabled := setupTestDB(t)
 		defer db.Close()
-		repo := New(db)
+		repo := New(db, ftsEnabled)
 		insertItems(t, repo, "Buy milk", "Buy eggs", "Walk the dog")
 
 		search := "buy"
@@ -247,9 +269,9 @@ func TestCount(t *testing.T) {
 
 func TestPosition(t *testing.T) {
 	t.Run("ConcurrentCreation", func(t *testing.T) {
-		db := setupTestDB(t)
+		db, ftsEnabled := setupTestDB(t)
 		defer db.Close()
-		repo := New(db)
+		repo := New(db, ftsEnabled)
 		ctx := context.Background()
 
 		const numGoroutines = 20
@@ -299,9 +321,9 @@ func TestPosition(t *testing.T) {
 	})
 
 	t.Run("SequentialIncrement", func(t *testing.T) {
-		db := setupTestDB(t)
+		db, ftsEnabled := setupTestDB(t)
 		defer db.Close()
-		repo := New(db)
+		repo := New(db, ftsEnabled)
 		ctx := context.Background()
 
 		for i := 1; i <= 5; i++ {
@@ -320,9 +342,9 @@ func TestPosition(t *testing.T) {
 	})
 
 	t.Run("ContinuesFromMax", func(t *testing.T) {
-		db := setupTestDB(t)
+		db, ftsEnabled := setupTestDB(t)
 		defer db.Close()
-		repo := New(db)
+		repo := New(db, ftsEnabled)
 		ctx := context.Background()
 
 		// Insert an item with position 10 using regular Add
@@ -345,37 +367,6 @@ func TestPosition(t *testing.T) {
 		}
 		if result.Position().Int() != 11 {
 			t.Errorf("expected position 11, got %d", result.Position().Int())
-		}
-	})
-}
-
-func TestHasFTS(t *testing.T) {
-	t.Run("DetectsAbsence", func(t *testing.T) {
-		db := setupTestDBWithoutFTS(t)
-		defer db.Close()
-		repo := New(db)
-		if repo.hasFTS() {
-			t.Error("expected hasFTS() = false for DB without FTS5 table")
-		}
-	})
-
-	t.Run("DetectsPresence", func(t *testing.T) {
-		// Check if FTS5 is available
-		probe, err := sql.Open("sqlite3", ":memory:")
-		if err != nil {
-			t.Fatalf("open db: %v", err)
-		}
-		_, err = probe.Exec("CREATE VIRTUAL TABLE _fts_probe USING fts5(x)")
-		probe.Close()
-		if err != nil {
-			t.Skipf("FTS5 not available, skipping: %v", err)
-		}
-
-		db := setupTestDB(t)
-		defer db.Close()
-		repo := New(db)
-		if !repo.hasFTS() {
-			t.Error("expected hasFTS() = true for DB with FTS5 table")
 		}
 	})
 }

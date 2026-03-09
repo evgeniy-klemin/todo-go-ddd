@@ -80,7 +80,7 @@ func TestApplyAll_CreatesTableAndFTS(t *testing.T) {
 	}
 	defer db.Close()
 
-	fts, err := ApplyAll(db)
+	fts, err := ApplyAll(db, "sqlite3")
 	if err != nil {
 		t.Fatalf("ApplyAll: %v", err)
 	}

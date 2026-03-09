@@ -19,25 +19,14 @@ import (
 type Repository struct {
 	db         *sql.DB
 	mu         sync.Mutex
-	ftsOnce    sync.Once
 	ftsEnabled bool
 }
 
-func New(db *sql.DB) *Repository {
+func New(db *sql.DB, ftsEnabled bool) *Repository {
 	return &Repository{
-		db: db,
+		db:         db,
+		ftsEnabled: ftsEnabled,
 	}
-}
-
-// hasFTS checks whether the item_fts virtual table exists (FTS5 is available).
-// The result is cached using sync.Once for safe concurrent access.
-func (r *Repository) hasFTS() bool {
-	r.ftsOnce.Do(func() {
-		var name string
-		err := r.db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='item_fts'").Scan(&name)
-		r.ftsEnabled = err == nil && name == "item_fts"
-	})
-	return r.ftsEnabled
 }
 
 func (r *Repository) maxPosition(ctx context.Context) (int, error) {
@@ -161,7 +150,7 @@ func (r *Repository) All(
 	}
 
 	if search != nil && *search != "" {
-		if r.hasFTS() {
+		if r.ftsEnabled {
 			ftsQuery := buildFTSQuery(*search)
 			query = append(query, qm.Where(
 				"item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)",
@@ -217,7 +206,7 @@ func (r *Repository) Count(ctx context.Context, done *bool, search *string) (int
 	}
 
 	if search != nil && *search != "" {
-		if r.hasFTS() {
+		if r.ftsEnabled {
 			ftsQuery := buildFTSQuery(*search)
 			query = append(query, qm.Where(
 				"item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)",

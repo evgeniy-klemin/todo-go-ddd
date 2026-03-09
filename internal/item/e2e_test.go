@@ -17,22 +17,23 @@ import (
 	"github.com/evgeniy-klemin/todo/internal/item/ports"
 )
 
-func setupE2EDB(t *testing.T) *sql.DB {
+func setupE2EDB(t *testing.T) (*sql.DB, bool) {
 	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	if _, err := schema.ApplyAll(db); err != nil {
+	ftsEnabled, err := schema.ApplyAll(db, "sqlite3")
+	if err != nil {
 		t.Fatalf("apply schema: %v", err)
 	}
-	return db
+	return db, ftsEnabled
 }
 
 func setupE2EServer(t *testing.T) (*echo.Echo, *sql.DB) {
 	t.Helper()
-	db := setupE2EDB(t)
-	container := item.NewContainer(db)
+	db, ftsEnabled := setupE2EDB(t)
+	container := item.NewContainer(db, ftsEnabled)
 
 	e := echo.New()
 	container.RegisterHandlers(e)

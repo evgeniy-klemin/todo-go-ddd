@@ -5,17 +5,18 @@ package schema
 
 import "database/sql"
 
-// ItemTable is the DDL for the core item table.
-const ItemTable = `
+// ItemTableCreate is the DDL for the core item table.
+const ItemTableCreate = `
 CREATE TABLE IF NOT EXISTS item (
 	id VARCHAR(36) NOT NULL PRIMARY KEY,
 	name VARCHAR(1000) NOT NULL,
 	position INTEGER NOT NULL DEFAULT 1,
 	done BOOL NOT NULL DEFAULT FALSE,
 	created_at DATETIME NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_item_position ON item (position);
-`
+)`
+
+// ItemIndexCreate is the DDL for the position index on item.
+const ItemIndexCreate = `CREATE INDEX IF NOT EXISTS idx_item_position ON item (position)`
 
 // FTSTable creates the FTS5 virtual table for full-text search.
 const FTSTable = `CREATE VIRTUAL TABLE IF NOT EXISTS item_fts USING fts5(name, content='item', content_rowid='rowid')`
@@ -49,7 +50,10 @@ DROP TRIGGER IF EXISTS item_au;
 
 // Apply creates the base item table and position index. It does not set up FTS5.
 func Apply(db *sql.DB) error {
-	_, err := db.Exec(ItemTable)
+	if _, err := db.Exec(ItemTableCreate); err != nil {
+		return err
+	}
+	_, err := db.Exec(ItemIndexCreate)
 	return err
 }
 
@@ -77,9 +81,13 @@ func ApplyFTS(db *sql.DB) bool {
 
 // ApplyAll creates the item table and attempts to set up FTS5. It returns whether
 // FTS5 was successfully enabled and any error from creating the base table.
-func ApplyAll(db *sql.DB) (ftsEnabled bool, err error) {
+// When driver is "mysql", FTS setup is skipped entirely.
+func ApplyAll(db *sql.DB, driver string) (ftsEnabled bool, err error) {
 	if err := Apply(db); err != nil {
 		return false, err
+	}
+	if driver == "mysql" {
+		return false, nil
 	}
 	return ApplyFTS(db), nil
 }
