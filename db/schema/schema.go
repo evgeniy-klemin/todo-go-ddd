@@ -10,6 +10,12 @@ import (
 	"github.com/go-sql-driver/mysql"
 )
 
+// DriverSQLite is the driver name for SQLite.
+const DriverSQLite = "sqlite3"
+
+// DriverMySQL is the driver name for MySQL.
+const DriverMySQL = "mysql"
+
 // ItemTableCreate is the DDL for the core item table.
 const ItemTableCreate = `
 CREATE TABLE IF NOT EXISTS item (
@@ -67,11 +73,11 @@ func Apply(db *sql.DB, driver string) error {
 		return err
 	}
 	indexDDL := ItemIndexCreateSQLite
-	if driver == "mysql" {
+	if driver == DriverMySQL {
 		indexDDL = ItemIndexCreateMySQL
 	}
 	_, err := db.Exec(indexDDL)
-	if err != nil && driver == "mysql" {
+	if err != nil && driver == DriverMySQL {
 		var mysqlErr *mysql.MySQLError
 		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1061 {
 			// Ignore "Duplicate key name" error (index already exists)
@@ -110,7 +116,7 @@ func ApplyAll(db *sql.DB, driver string) (ftsEnabled bool, err error) {
 	if err := Apply(db, driver); err != nil {
 		return false, err
 	}
-	if driver == "mysql" {
+	if driver == DriverMySQL {
 		_, indexErr := db.Exec(ItemFulltextCreateMySQL)
 		if indexErr != nil {
 			var mysqlErr *mysql.MySQLError
@@ -118,7 +124,7 @@ func ApplyAll(db *sql.DB, driver string) (ftsEnabled bool, err error) {
 				// Ignore "Duplicate key name" error (index already exists)
 				return true, nil
 			}
-			return false, nil
+			return false, indexErr
 		}
 		return true, nil
 	}

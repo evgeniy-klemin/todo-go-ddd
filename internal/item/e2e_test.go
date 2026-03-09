@@ -19,11 +19,11 @@ import (
 
 func setupE2EDB(t *testing.T) (*sql.DB, bool) {
 	t.Helper()
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open(schema.DriverSQLite, ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	ftsEnabled, err := schema.ApplyAll(db, "sqlite3")
+	ftsEnabled, err := schema.ApplyAll(db, schema.DriverSQLite)
 	if err != nil {
 		t.Fatalf("apply schema: %v", err)
 	}
@@ -33,7 +33,7 @@ func setupE2EDB(t *testing.T) (*sql.DB, bool) {
 func setupE2EServer(t *testing.T) (*echo.Echo, *sql.DB) {
 	t.Helper()
 	db, ftsEnabled := setupE2EDB(t)
-	container := item.NewContainer(db, "sqlite3", ftsEnabled)
+	container := item.NewContainer(db, schema.DriverSQLite, ftsEnabled)
 
 	e := echo.New()
 	container.RegisterHandlers(e)

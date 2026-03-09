@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/evgeniy-klemin/todo/db/schema"
 	"github.com/evgeniy-klemin/todo/internal/item/app"
 	"github.com/evgeniy-klemin/todo/internal/item/domain"
 	"github.com/evgeniy-klemin/todo/internal/item/repository/models"
@@ -153,7 +154,7 @@ func (r *Repository) All(
 
 	if search != nil && *search != "" {
 		if r.ftsEnabled {
-			if r.driver == "mysql" {
+			if r.driver == schema.DriverMySQL {
 				mysqlQuery := buildMySQLFTSQuery(*search)
 				query = append(query, qm.Where(
 					"MATCH(name) AGAINST(? IN BOOLEAN MODE)",
@@ -217,7 +218,7 @@ func (r *Repository) Count(ctx context.Context, done *bool, search *string) (int
 
 	if search != nil && *search != "" {
 		if r.ftsEnabled {
-			if r.driver == "mysql" {
+			if r.driver == schema.DriverMySQL {
 				mysqlQuery := buildMySQLFTSQuery(*search)
 				query = append(query, qm.Where(
 					"MATCH(name) AGAINST(? IN BOOLEAN MODE)",
@@ -296,11 +297,15 @@ func buildFTSQuery(search string) string {
 // Example: "buy milk" -> "+buy* +milk*"
 func buildMySQLFTSQuery(search string) string {
 	words := strings.Fields(search)
-	for i, word := range words {
+	sanitized := make([]string, 0, len(words))
+	for _, word := range words {
 		word = strings.ReplaceAll(word, "+", "")
 		word = strings.ReplaceAll(word, "-", "")
 		word = strings.ReplaceAll(word, "*", "")
-		words[i] = "+" + word + "*"
+		if word == "" {
+			continue
+		}
+		sanitized = append(sanitized, "+"+word+"*")
 	}
-	return strings.Join(words, " ")
+	return strings.Join(sanitized, " ")
 }

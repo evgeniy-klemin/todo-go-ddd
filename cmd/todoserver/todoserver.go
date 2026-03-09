@@ -59,13 +59,13 @@ func server(port int) {
 
 	driver := os.Getenv("DB_DRIVER")
 	if driver == "" {
-		driver = "sqlite3"
+		driver = schema.DriverSQLite
 	}
 
 	dsn := os.Getenv("DB_DSN")
 	if dsn == "" {
 		switch driver {
-		case "mysql":
+		case schema.DriverMySQL:
 			dsn = "todo:todo@tcp(localhost)/todotest?parseTime=true"
 		default:
 			dsn = "file:todotest.db?cache=shared"
@@ -81,7 +81,12 @@ func server(port int) {
 		panic(err)
 	}
 	if !ftsEnabled {
-		fmt.Fprintf(os.Stderr, "Warning: FTS5 not available, falling back to LIKE search\n")
+		switch driver {
+		case schema.DriverMySQL:
+			fmt.Fprintf(os.Stderr, "Warning: MySQL FULLTEXT index not available, falling back to LIKE search\n")
+		default:
+			fmt.Fprintf(os.Stderr, "Warning: FTS5 not available, falling back to LIKE search\n")
+		}
 	}
 
 	// Containers
