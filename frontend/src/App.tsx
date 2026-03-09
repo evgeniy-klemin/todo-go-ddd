@@ -8,6 +8,7 @@ function App() {
   const [items, setItems] = useState<ItemResponse[]>([])
   const [newName, setNewName] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
+  const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -16,14 +17,15 @@ function App() {
     setError(null)
     try {
       const done = filter === 'all' ? undefined : filter === 'done'
-      const result = await ItemsService.getItems(100, 1, undefined, undefined, done)
+      const q = search.trim() || undefined
+      const result = await ItemsService.getItems(100, 1, undefined, undefined, done, q)
       setItems(result ?? [])
     } catch {
       setError('Failed to load items')
     } finally {
       setLoading(false)
     }
-  }, [filter])
+  }, [filter, search])
 
   useEffect(() => {
     fetchItems()
@@ -84,6 +86,35 @@ function App() {
               Add
             </button>
           </form>
+
+          {/* Search */}
+          <div className="flex gap-2 px-4 pt-3">
+            <div className="relative flex-1">
+              <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search..."
+                aria-label="Search items"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-8 text-sm text-slate-700 placeholder:text-slate-300 outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              />
+              {search && (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  onClick={() => setSearch('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
 
           {/* Error */}
           {error && (

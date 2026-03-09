@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/go-testfixtures/testfixtures/v3"
@@ -14,6 +15,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/evgeniy-klemin/todo"
+	"github.com/evgeniy-klemin/todo/db/schema"
 	item "github.com/evgeniy-klemin/todo/internal/item"
 	itemports "github.com/evgeniy-klemin/todo/internal/item/ports"
 )
@@ -61,14 +63,12 @@ func server(port int) {
 	if err != nil {
 		panic(err)
 	}
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS item (
-		id VARCHAR(36) NOT NULL PRIMARY KEY,
-		name VARCHAR(1000) NOT NULL,
-		position INTEGER NOT NULL DEFAULT 1,
-		done BOOL NOT NULL DEFAULT FALSE,
-		created_at DATETIME NOT NULL
-	)`); err != nil {
+	ftsEnabled, err := schema.ApplyAll(db)
+	if err != nil {
 		panic(err)
+	}
+	if !ftsEnabled {
+		fmt.Fprintf(os.Stderr, "Warning: FTS5 not available, falling back to LIKE search\n")
 	}
 
 	// Containers
@@ -102,7 +102,7 @@ func fixtures() {
 }
 
 func main() {
-	var port = flag.Int("port", 8080, "Port for test HTTP server")
+	var port = flag.Int("port", 3000, "Port for test HTTP server")
 	flag.Parse()
 
 	server(*port)

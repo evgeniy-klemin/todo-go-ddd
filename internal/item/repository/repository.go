@@ -17,14 +17,27 @@ import (
 )
 
 type Repository struct {
-	db *sql.DB
-	mu sync.Mutex
+	db         *sql.DB
+	mu         sync.Mutex
+	ftsOnce    sync.Once
+	ftsEnabled bool
 }
 
 func New(db *sql.DB) *Repository {
 	return &Repository{
 		db: db,
 	}
+}
+
+// hasFTS checks whether the item_fts virtual table exists (FTS5 is available).
+// The result is cached using sync.Once for safe concurrent access.
+func (r *Repository) hasFTS() bool {
+	r.ftsOnce.Do(func() {
+		var name string
+		err := r.db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='item_fts'").Scan(&name)
+		r.ftsEnabled = err == nil && name == "item_fts"
+	})
+	return r.ftsEnabled
 }
 
 func (r *Repository) maxPosition(ctx context.Context) (int, error) {
@@ -148,7 +161,15 @@ func (r *Repository) All(
 	}
 
 	if search != nil && *search != "" {
-		query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
+		if r.hasFTS() {
+			ftsQuery := buildFTSQuery(*search)
+			query = append(query, qm.Where(
+				"item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)",
+				ftsQuery,
+			))
+		} else {
+			query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
+		}
 	}
 
 	query = append(query, qm.Select(columns...))
@@ -196,7 +217,15 @@ func (r *Repository) Count(ctx context.Context, done *bool, search *string) (int
 	}
 
 	if search != nil && *search != "" {
-		query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
+		if r.hasFTS() {
+			ftsQuery := buildFTSQuery(*search)
+			query = append(query, qm.Where(
+				"item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)",
+				ftsQuery,
+			))
+		} else {
+			query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
+		}
 	}
 
 	count, err := models.Items(query...).Count(ctx, r.db)
@@ -242,4 +271,15 @@ func (r *Repository) Update(
 		return nil, err
 	}
 	return domainItem, nil
+}
+
+// buildFTSQuery converts a user search string into an FTS5 query with prefix matching.
+// Example: "buy milk" -> "\"buy\"* \"milk\"*" (each word gets prefix matching)
+func buildFTSQuery(search string) string {
+	words := strings.Fields(search)
+	for i, word := range words {
+		word = strings.ReplaceAll(word, "\"", "\"\"")
+		words[i] = "\"" + word + "\"" + "*"
+	}
+	return strings.Join(words, " ")
 }
