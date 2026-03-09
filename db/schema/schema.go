@@ -26,6 +26,9 @@ const ItemIndexCreateSQLite = `CREATE INDEX IF NOT EXISTS idx_item_position ON i
 // ItemIndexCreateMySQL is the DDL for the position index (MySQL lacks IF NOT EXISTS for indexes).
 const ItemIndexCreateMySQL = `CREATE INDEX idx_item_position ON item (position)`
 
+// ItemFulltextCreateMySQL is the DDL for the MySQL FULLTEXT index on the name column.
+const ItemFulltextCreateMySQL = `CREATE FULLTEXT INDEX idx_item_fulltext ON item (name)`
+
 // FTSTable creates the FTS5 virtual table for full-text search.
 const FTSTable = `CREATE VIRTUAL TABLE IF NOT EXISTS item_fts USING fts5(name, content='item', content_rowid='rowid')`
 
@@ -101,14 +104,23 @@ func ApplyFTS(db *sql.DB) bool {
 }
 
 // ApplyAll creates the item table and attempts to set up FTS5. It returns whether
-// FTS5 was successfully enabled and any error from creating the base table.
-// When driver is "mysql", FTS setup is skipped entirely.
+// FTS5 (or MySQL FULLTEXT) was successfully enabled and any error from creating the base table.
+// When driver is "mysql", SQLite FTS5 setup is skipped but MySQL FULLTEXT index is created.
 func ApplyAll(db *sql.DB, driver string) (ftsEnabled bool, err error) {
 	if err := Apply(db, driver); err != nil {
 		return false, err
 	}
 	if driver == "mysql" {
-		return false, nil
+		_, indexErr := db.Exec(ItemFulltextCreateMySQL)
+		if indexErr != nil {
+			var mysqlErr *mysql.MySQLError
+			if errors.As(indexErr, &mysqlErr) && mysqlErr.Number == 1061 {
+				// Ignore "Duplicate key name" error (index already exists)
+				return true, nil
+			}
+			return false, nil
+		}
+		return true, nil
 	}
 	return ApplyFTS(db), nil
 }

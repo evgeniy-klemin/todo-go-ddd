@@ -33,7 +33,7 @@ func setupE2EDB(t *testing.T) (*sql.DB, bool) {
 func setupE2EServer(t *testing.T) (*echo.Echo, *sql.DB) {
 	t.Helper()
 	db, ftsEnabled := setupE2EDB(t)
-	container := item.NewContainer(db, ftsEnabled)
+	container := item.NewContainer(db, "sqlite3", ftsEnabled)
 
 	e := echo.New()
 	container.RegisterHandlers(e)

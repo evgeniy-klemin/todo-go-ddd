@@ -85,7 +85,7 @@ func server(port int) {
 	}
 
 	// Containers
-	itemContainer := item.NewContainer(db, ftsEnabled)
+	itemContainer := item.NewContainer(db, driver, ftsEnabled)
 
 	// Register http handlers
 	itemContainer.RegisterHandlers(e)

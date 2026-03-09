@@ -19,12 +19,14 @@ import (
 type Repository struct {
 	db         *sql.DB
 	mu         sync.Mutex
+	driver     string
 	ftsEnabled bool
 }
 
-func New(db *sql.DB, ftsEnabled bool) *Repository {
+func New(db *sql.DB, driver string, ftsEnabled bool) *Repository {
 	return &Repository{
 		db:         db,
+		driver:     driver,
 		ftsEnabled: ftsEnabled,
 	}
 }
@@ -151,11 +153,19 @@ func (r *Repository) All(
 
 	if search != nil && *search != "" {
 		if r.ftsEnabled {
-			ftsQuery := buildFTSQuery(*search)
-			query = append(query, qm.Where(
-				"item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)",
-				ftsQuery,
-			))
+			if r.driver == "mysql" {
+				mysqlQuery := buildMySQLFTSQuery(*search)
+				query = append(query, qm.Where(
+					"MATCH(name) AGAINST(? IN BOOLEAN MODE)",
+					mysqlQuery,
+				))
+			} else {
+				ftsQuery := buildFTSQuery(*search)
+				query = append(query, qm.Where(
+					"item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)",
+					ftsQuery,
+				))
+			}
 		} else {
 			query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
 		}
@@ -207,11 +217,19 @@ func (r *Repository) Count(ctx context.Context, done *bool, search *string) (int
 
 	if search != nil && *search != "" {
 		if r.ftsEnabled {
-			ftsQuery := buildFTSQuery(*search)
-			query = append(query, qm.Where(
-				"item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)",
-				ftsQuery,
-			))
+			if r.driver == "mysql" {
+				mysqlQuery := buildMySQLFTSQuery(*search)
+				query = append(query, qm.Where(
+					"MATCH(name) AGAINST(? IN BOOLEAN MODE)",
+					mysqlQuery,
+				))
+			} else {
+				ftsQuery := buildFTSQuery(*search)
+				query = append(query, qm.Where(
+					"item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)",
+					ftsQuery,
+				))
+			}
 		} else {
 			query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
 		}
@@ -269,6 +287,20 @@ func buildFTSQuery(search string) string {
 	for i, word := range words {
 		word = strings.ReplaceAll(word, "\"", "\"\"")
 		words[i] = "\"" + word + "\"" + "*"
+	}
+	return strings.Join(words, " ")
+}
+
+// buildMySQLFTSQuery converts a user search string into a MySQL FULLTEXT boolean mode query
+// with prefix matching and AND logic.
+// Example: "buy milk" -> "+buy* +milk*"
+func buildMySQLFTSQuery(search string) string {
+	words := strings.Fields(search)
+	for i, word := range words {
+		word = strings.ReplaceAll(word, "+", "")
+		word = strings.ReplaceAll(word, "-", "")
+		word = strings.ReplaceAll(word, "*", "")
+		words[i] = "+" + word + "*"
 	}
 	return strings.Join(words, " ")
 }
