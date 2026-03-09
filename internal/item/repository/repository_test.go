@@ -31,7 +31,7 @@ func setupTestDBWithoutFTS(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	if err := schema.Apply(db); err != nil {
+	if err := schema.Apply(db, "sqlite3"); err != nil {
 		t.Fatalf("apply schema: %v", err)
 	}
 	return db

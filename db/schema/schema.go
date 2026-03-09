@@ -3,7 +3,12 @@
 // server startup and test setup code.
 package schema
 
-import "database/sql"
+import (
+	"database/sql"
+	"errors"
+
+	"github.com/go-sql-driver/mysql"
+)
 
 // ItemTableCreate is the DDL for the core item table.
 const ItemTableCreate = `
@@ -15,8 +20,11 @@ CREATE TABLE IF NOT EXISTS item (
 	created_at DATETIME NOT NULL
 )`
 
-// ItemIndexCreate is the DDL for the position index on item.
-const ItemIndexCreate = `CREATE INDEX IF NOT EXISTS idx_item_position ON item (position)`
+// ItemIndexCreateSQLite is the DDL for the position index (SQLite supports IF NOT EXISTS).
+const ItemIndexCreateSQLite = `CREATE INDEX IF NOT EXISTS idx_item_position ON item (position)`
+
+// ItemIndexCreateMySQL is the DDL for the position index (MySQL lacks IF NOT EXISTS for indexes).
+const ItemIndexCreateMySQL = `CREATE INDEX idx_item_position ON item (position)`
 
 // FTSTable creates the FTS5 virtual table for full-text search.
 const FTSTable = `CREATE VIRTUAL TABLE IF NOT EXISTS item_fts USING fts5(name, content='item', content_rowid='rowid')`
@@ -49,11 +57,24 @@ DROP TRIGGER IF EXISTS item_au;
 `
 
 // Apply creates the base item table and position index. It does not set up FTS5.
-func Apply(db *sql.DB) error {
+// For MySQL, the index creation ignores "duplicate key" errors since MySQL does not
+// support CREATE INDEX IF NOT EXISTS.
+func Apply(db *sql.DB, driver string) error {
 	if _, err := db.Exec(ItemTableCreate); err != nil {
 		return err
 	}
-	_, err := db.Exec(ItemIndexCreate)
+	indexDDL := ItemIndexCreateSQLite
+	if driver == "mysql" {
+		indexDDL = ItemIndexCreateMySQL
+	}
+	_, err := db.Exec(indexDDL)
+	if err != nil && driver == "mysql" {
+		var mysqlErr *mysql.MySQLError
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1061 {
+			// Ignore "Duplicate key name" error (index already exists)
+			return nil
+		}
+	}
 	return err
 }
 
@@ -83,7 +104,7 @@ func ApplyFTS(db *sql.DB) bool {
 // FTS5 was successfully enabled and any error from creating the base table.
 // When driver is "mysql", FTS setup is skipped entirely.
 func ApplyAll(db *sql.DB, driver string) (ftsEnabled bool, err error) {
-	if err := Apply(db); err != nil {
+	if err := Apply(db, driver); err != nil {
 		return false, err
 	}
 	if driver == "mysql" {

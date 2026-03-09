@@ -14,7 +14,7 @@ func TestApply_CreatesItemTable(t *testing.T) {
 	}
 	defer db.Close()
 
-	if err := Apply(db); err != nil {
+	if err := Apply(db, "sqlite3"); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 
@@ -37,7 +37,7 @@ func TestApplyFTS_ReturnsTrueWhenAvailable(t *testing.T) {
 	defer db.Close()
 
 	// FTS5 requires the base table to exist first (for content= sync)
-	if err := Apply(db); err != nil {
+	if err := Apply(db, "sqlite3"); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 
@@ -109,7 +109,7 @@ func TestApplyFTS_RebuildIndexesExistingRows(t *testing.T) {
 	defer db.Close()
 
 	// Create base table and insert data BEFORE FTS setup
-	if err := Apply(db); err != nil {
+	if err := Apply(db, "sqlite3"); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	_, err = db.Exec(`INSERT INTO item (id, name, position, done, created_at) VALUES ('aaa', 'Buy milk', 1, 0, '2025-01-01')`)
@@ -141,10 +141,10 @@ func TestApply_Idempotent(t *testing.T) {
 	defer db.Close()
 
 	// Apply twice should not error
-	if err := Apply(db); err != nil {
+	if err := Apply(db, "sqlite3"); err != nil {
 		t.Fatalf("first Apply: %v", err)
 	}
-	if err := Apply(db); err != nil {
+	if err := Apply(db, "sqlite3"); err != nil {
 		t.Fatalf("second Apply: %v", err)
 	}
 }
