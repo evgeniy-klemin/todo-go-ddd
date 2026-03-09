@@ -8,13 +8,13 @@ import (
 )
 
 func TestApply_CreatesItemTable(t *testing.T) {
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open(DriverSQLite, ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
 	defer db.Close()
 
-	if err := Apply(db); err != nil {
+	if err := Apply(db, DriverSQLite); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 
@@ -30,14 +30,14 @@ func TestApply_CreatesItemTable(t *testing.T) {
 }
 
 func TestApplyFTS_ReturnsTrueWhenAvailable(t *testing.T) {
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open(DriverSQLite, ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
 	defer db.Close()
 
 	// FTS5 requires the base table to exist first (for content= sync)
-	if err := Apply(db); err != nil {
+	if err := Apply(db, DriverSQLite); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 
@@ -61,7 +61,7 @@ func TestApplyFTS_ReturnsTrueWhenAvailable(t *testing.T) {
 }
 
 func TestApplyAll_CreatesTableAndFTS(t *testing.T) {
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open(DriverSQLite, ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -74,13 +74,13 @@ func TestApplyAll_CreatesTableAndFTS(t *testing.T) {
 	db.Exec("DROP TABLE _fts_probe")
 	// Re-open since we polluted it
 	db.Close()
-	db, err = sql.Open("sqlite3", ":memory:")
+	db, err = sql.Open(DriverSQLite, ":memory:")
 	if err != nil {
 		t.Fatalf("reopen db: %v", err)
 	}
 	defer db.Close()
 
-	fts, err := ApplyAll(db)
+	fts, err := ApplyAll(db, DriverSQLite)
 	if err != nil {
 		t.Fatalf("ApplyAll: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestApplyAll_CreatesTableAndFTS(t *testing.T) {
 }
 
 func TestApplyFTS_RebuildIndexesExistingRows(t *testing.T) {
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open(DriverSQLite, ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -102,14 +102,14 @@ func TestApplyFTS_RebuildIndexesExistingRows(t *testing.T) {
 	}
 	db.Exec("DROP TABLE _fts_probe")
 	db.Close()
-	db, err = sql.Open("sqlite3", ":memory:")
+	db, err = sql.Open(DriverSQLite, ":memory:")
 	if err != nil {
 		t.Fatalf("reopen db: %v", err)
 	}
 	defer db.Close()
 
 	// Create base table and insert data BEFORE FTS setup
-	if err := Apply(db); err != nil {
+	if err := Apply(db, DriverSQLite); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	_, err = db.Exec(`INSERT INTO item (id, name, position, done, created_at) VALUES ('aaa', 'Buy milk', 1, 0, '2025-01-01')`)
@@ -134,17 +134,17 @@ func TestApplyFTS_RebuildIndexesExistingRows(t *testing.T) {
 }
 
 func TestApply_Idempotent(t *testing.T) {
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open(DriverSQLite, ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
 	defer db.Close()
 
 	// Apply twice should not error
-	if err := Apply(db); err != nil {
+	if err := Apply(db, DriverSQLite); err != nil {
 		t.Fatalf("first Apply: %v", err)
 	}
-	if err := Apply(db); err != nil {
+	if err := Apply(db, DriverSQLite); err != nil {
 		t.Fatalf("second Apply: %v", err)
 	}
 }

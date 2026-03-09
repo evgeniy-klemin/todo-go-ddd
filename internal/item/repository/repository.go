@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/evgeniy-klemin/todo/db/schema"
 	"github.com/evgeniy-klemin/todo/internal/item/app"
 	"github.com/evgeniy-klemin/todo/internal/item/domain"
 	"github.com/evgeniy-klemin/todo/internal/item/repository/models"
@@ -19,25 +20,16 @@ import (
 type Repository struct {
 	db         *sql.DB
 	mu         sync.Mutex
-	ftsOnce    sync.Once
+	driver     string
 	ftsEnabled bool
 }
 
-func New(db *sql.DB) *Repository {
+func New(db *sql.DB, driver string, ftsEnabled bool) *Repository {
 	return &Repository{
-		db: db,
+		db:         db,
+		driver:     driver,
+		ftsEnabled: ftsEnabled,
 	}
-}
-
-// hasFTS checks whether the item_fts virtual table exists (FTS5 is available).
-// The result is cached using sync.Once for safe concurrent access.
-func (r *Repository) hasFTS() bool {
-	r.ftsOnce.Do(func() {
-		var name string
-		err := r.db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='item_fts'").Scan(&name)
-		r.ftsEnabled = err == nil && name == "item_fts"
-	})
-	return r.ftsEnabled
 }
 
 func (r *Repository) maxPosition(ctx context.Context) (int, error) {
@@ -161,12 +153,20 @@ func (r *Repository) All(
 	}
 
 	if search != nil && *search != "" {
-		if r.hasFTS() {
-			ftsQuery := buildFTSQuery(*search)
-			query = append(query, qm.Where(
-				"item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)",
-				ftsQuery,
-			))
+		if r.ftsEnabled {
+			if r.driver == schema.DriverMySQL {
+				mysqlQuery := buildMySQLFTSQuery(*search)
+				query = append(query, qm.Where(
+					"MATCH(name) AGAINST(? IN BOOLEAN MODE)",
+					mysqlQuery,
+				))
+			} else {
+				ftsQuery := buildFTSQuery(*search)
+				query = append(query, qm.Where(
+					"item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)",
+					ftsQuery,
+				))
+			}
 		} else {
 			query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
 		}
@@ -217,12 +217,20 @@ func (r *Repository) Count(ctx context.Context, done *bool, search *string) (int
 	}
 
 	if search != nil && *search != "" {
-		if r.hasFTS() {
-			ftsQuery := buildFTSQuery(*search)
-			query = append(query, qm.Where(
-				"item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)",
-				ftsQuery,
-			))
+		if r.ftsEnabled {
+			if r.driver == schema.DriverMySQL {
+				mysqlQuery := buildMySQLFTSQuery(*search)
+				query = append(query, qm.Where(
+					"MATCH(name) AGAINST(? IN BOOLEAN MODE)",
+					mysqlQuery,
+				))
+			} else {
+				ftsQuery := buildFTSQuery(*search)
+				query = append(query, qm.Where(
+					"item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)",
+					ftsQuery,
+				))
+			}
 		} else {
 			query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
 		}
@@ -282,4 +290,22 @@ func buildFTSQuery(search string) string {
 		words[i] = "\"" + word + "\"" + "*"
 	}
 	return strings.Join(words, " ")
+}
+
+// buildMySQLFTSQuery converts a user search string into a MySQL FULLTEXT boolean mode query
+// with prefix matching and AND logic.
+// Example: "buy milk" -> "+buy* +milk*"
+func buildMySQLFTSQuery(search string) string {
+	words := strings.Fields(search)
+	sanitized := make([]string, 0, len(words))
+	for _, word := range words {
+		word = strings.ReplaceAll(word, "+", "")
+		word = strings.ReplaceAll(word, "-", "")
+		word = strings.ReplaceAll(word, "*", "")
+		if word == "" {
+			continue
+		}
+		sanitized = append(sanitized, "+"+word+"*")
+	}
+	return strings.Join(sanitized, " ")
 }

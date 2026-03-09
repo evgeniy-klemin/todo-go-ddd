@@ -3,19 +3,37 @@
 // server startup and test setup code.
 package schema
 
-import "database/sql"
+import (
+	"database/sql"
+	"errors"
 
-// ItemTable is the DDL for the core item table.
-const ItemTable = `
+	"github.com/go-sql-driver/mysql"
+)
+
+// DriverSQLite is the driver name for SQLite.
+const DriverSQLite = "sqlite3"
+
+// DriverMySQL is the driver name for MySQL.
+const DriverMySQL = "mysql"
+
+// ItemTableCreate is the DDL for the core item table.
+const ItemTableCreate = `
 CREATE TABLE IF NOT EXISTS item (
 	id VARCHAR(36) NOT NULL PRIMARY KEY,
 	name VARCHAR(1000) NOT NULL,
 	position INTEGER NOT NULL DEFAULT 1,
 	done BOOL NOT NULL DEFAULT FALSE,
 	created_at DATETIME NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_item_position ON item (position);
-`
+)`
+
+// ItemIndexCreateSQLite is the DDL for the position index (SQLite supports IF NOT EXISTS).
+const ItemIndexCreateSQLite = `CREATE INDEX IF NOT EXISTS idx_item_position ON item (position)`
+
+// ItemIndexCreateMySQL is the DDL for the position index (MySQL lacks IF NOT EXISTS for indexes).
+const ItemIndexCreateMySQL = `CREATE INDEX idx_item_position ON item (position)`
+
+// ItemFulltextCreateMySQL is the DDL for the MySQL FULLTEXT index on the name column.
+const ItemFulltextCreateMySQL = `CREATE FULLTEXT INDEX idx_item_fulltext ON item (name)`
 
 // FTSTable creates the FTS5 virtual table for full-text search.
 const FTSTable = `CREATE VIRTUAL TABLE IF NOT EXISTS item_fts USING fts5(name, content='item', content_rowid='rowid')`
@@ -48,8 +66,24 @@ DROP TRIGGER IF EXISTS item_au;
 `
 
 // Apply creates the base item table and position index. It does not set up FTS5.
-func Apply(db *sql.DB) error {
-	_, err := db.Exec(ItemTable)
+// For MySQL, the index creation ignores "duplicate key" errors since MySQL does not
+// support CREATE INDEX IF NOT EXISTS.
+func Apply(db *sql.DB, driver string) error {
+	if _, err := db.Exec(ItemTableCreate); err != nil {
+		return err
+	}
+	indexDDL := ItemIndexCreateSQLite
+	if driver == DriverMySQL {
+		indexDDL = ItemIndexCreateMySQL
+	}
+	_, err := db.Exec(indexDDL)
+	if err != nil && driver == DriverMySQL {
+		var mysqlErr *mysql.MySQLError
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1061 {
+			// Ignore "Duplicate key name" error (index already exists)
+			return nil
+		}
+	}
 	return err
 }
 
@@ -76,10 +110,23 @@ func ApplyFTS(db *sql.DB) bool {
 }
 
 // ApplyAll creates the item table and attempts to set up FTS5. It returns whether
-// FTS5 was successfully enabled and any error from creating the base table.
-func ApplyAll(db *sql.DB) (ftsEnabled bool, err error) {
-	if err := Apply(db); err != nil {
+// FTS5 (or MySQL FULLTEXT) was successfully enabled and any error from creating the base table.
+// When driver is "mysql", SQLite FTS5 setup is skipped but MySQL FULLTEXT index is created.
+func ApplyAll(db *sql.DB, driver string) (ftsEnabled bool, err error) {
+	if err := Apply(db, driver); err != nil {
 		return false, err
+	}
+	if driver == DriverMySQL {
+		_, indexErr := db.Exec(ItemFulltextCreateMySQL)
+		if indexErr != nil {
+			var mysqlErr *mysql.MySQLError
+			if errors.As(indexErr, &mysqlErr) && mysqlErr.Number == 1061 {
+				// Ignore "Duplicate key name" error (index already exists)
+				return true, nil
+			}
+			return false, indexErr
+		}
+		return true, nil
 	}
 	return ApplyFTS(db), nil
 }

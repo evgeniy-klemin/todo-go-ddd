@@ -9,7 +9,6 @@ import (
 
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/go-testfixtures/testfixtures/v3"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	_ "github.com/mattn/go-sqlite3"
@@ -58,21 +57,40 @@ func server(port int) {
 	// Swagger validation
 	setOapiValidator(e)
 
-	db, err := sql.Open("sqlite3", "file:todotest.db?cache=shared")
-	// db, err := sql.Open("mysql", "todo:todo@tcp(localhost)/todotest?parseTime=true")
+	driver := os.Getenv("DB_DRIVER")
+	if driver == "" {
+		driver = schema.DriverSQLite
+	}
+
+	dsn := os.Getenv("DB_DSN")
+	if dsn == "" {
+		switch driver {
+		case schema.DriverMySQL:
+			dsn = "todo:todo@tcp(localhost)/todotest?parseTime=true"
+		default:
+			dsn = "file:todotest.db?cache=shared"
+		}
+	}
+
+	db, err := sql.Open(driver, dsn)
 	if err != nil {
 		panic(err)
 	}
-	ftsEnabled, err := schema.ApplyAll(db)
+	ftsEnabled, err := schema.ApplyAll(db, driver)
 	if err != nil {
 		panic(err)
 	}
 	if !ftsEnabled {
-		fmt.Fprintf(os.Stderr, "Warning: FTS5 not available, falling back to LIKE search\n")
+		switch driver {
+		case schema.DriverMySQL:
+			fmt.Fprintf(os.Stderr, "Warning: MySQL FULLTEXT index not available, falling back to LIKE search\n")
+		default:
+			fmt.Fprintf(os.Stderr, "Warning: FTS5 not available, falling back to LIKE search\n")
+		}
 	}
 
 	// Containers
-	itemContainer := item.NewContainer(db)
+	itemContainer := item.NewContainer(db, driver, ftsEnabled)
 
 	// Register http handlers
 	itemContainer.RegisterHandlers(e)
@@ -80,25 +98,6 @@ func server(port int) {
 	registerDoc(e)
 
 	e.Logger.Fatal(e.Start(fmt.Sprintf("0.0.0.0:%d", port)))
-}
-
-func fixtures() {
-	// db, err := sql.Open("sqlite3", "file:todotest.db?cache=shared")
-	db, err := sql.Open("mysql", "todo:todo@tcp(localhost)/todotest")
-	if err != nil {
-		panic(err)
-	}
-	f, err := testfixtures.New(
-		testfixtures.Database(db),
-		testfixtures.Dialect("mysql"),
-		testfixtures.Directory("db/fixtures"),
-	)
-	if err != nil {
-		panic(err)
-	}
-	if err := f.Load(); err != nil {
-		panic(err)
-	}
 }
 
 func main() {

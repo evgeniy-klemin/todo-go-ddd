@@ -1,31 +1,72 @@
-# TODO DDD
+# Todo Go DDD
 
-> Example the todo API with DDD
+A todo API built with Go using Domain-Driven Design (DDD) architecture. Supports SQLite and MySQL as database backends.
 
 ## Prerequisites
 
-- `go install github.com/pressly/goose/v3/cmd/goose@latest` - migrate DB
-- `go get github.com/deepmap/oapi-codegen/pkg/codegen@v1.8.2` - dependency for sqlboiler
-- `go install github.com/volatiletech/sqlboiler/v4@latest` - ORM
-- `go install github.com/volatiletech/sqlboiler/v4/drivers/sqlboiler-mysql@latest` - ORM (MySQL)
+- Go 1.17+
+- Docker & Docker Compose (for MySQL)
+- `go install github.com/volatiletech/sqlboiler/v4@latest` — ORM
+- `go install github.com/volatiletech/sqlboiler/v4/drivers/sqlboiler-mysql@latest` — ORM MySQL driver
+- `go get github.com/deepmap/oapi-codegen/pkg/codegen@v1.8.2` — OpenAPI codegen
 
-## Setup
+## Quick Start
 
-- `docker-compose up` - run mysql server
-- `make generate` - regenerate openapi and orm
-- `make migrate` - migrate DB
+### SQLite (default, no setup needed)
+
+```bash
+make run
+```
+
+### MySQL
+
+```bash
+make run-mysql
+```
+
+The server starts at http://localhost:3000. API docs at http://localhost:3000/docs/.
+
+## Configuration
+
+| Variable    | Default   | Description                            |
+|-------------|-----------|----------------------------------------|
+| `DB_DRIVER` | `sqlite3` | Database driver (`sqlite3` or `mysql`) |
+| `DB_DSN`    | auto      | Database connection string             |
+
+Default DSN per driver:
+- **sqlite3**: `file:todotest.db?cache=shared`
+- **mysql**: `todo:todo@tcp(localhost)/todotest?parseTime=true`
+
+## Make Targets
+
+| Target                 | Description                                       |
+|------------------------|---------------------------------------------------|
+| `make run`             | Run server with SQLite                            |
+| `make run-mysql`       | Start MySQL via docker-compose and run server     |
+| `make test`            | Run unit tests (SQLite, no external dependencies) |
+| `make test-integration`| Run integration tests against MySQL               |
+| `make generate`        | Regenerate SQLBoiler models and OpenAPI code      |
 
 ## Run
 
-- `go run cmd/todoserver/todoserver.go` - run server, check url http://localhost:3000/ (use `-port` flag to override)
-- `go run cmd/todoclient/todoclient.go` - run client - concurrent 10000 rest queries to server
+- `go run cmd/todoserver/todoserver.go` — run server (use `-port` flag to override port)
+- `go run cmd/todoclient/todoclient.go` — run client (concurrent 10000 REST queries)
 
-## TODO
+## Project Structure
 
-[x] implement retrieve items by page number
-[x] sort by field position
-[x] fix sort - replace to ordered map
-[x] implement filter by done field
-[x] move pagination to Header
-[ ] tests for CRUD
-[ ] improve search with full text search
+```
+cmd/todoserver/       Server entrypoint
+internal/item/
+  domain/             Domain models and business logic
+  app/                Application services
+  ports/              HTTP handlers (OpenAPI)
+  repository/         Database access (SQLBoiler)
+db/
+  schema/             Schema definitions (single source of truth)
+  fixtures/           Test data
+test/
+  cases/item/         MySQL integration tests
+  setup/              Test suite setup (MySQL)
+docs/                 OpenAPI/Swagger specs
+frontend/             React frontend
+```
