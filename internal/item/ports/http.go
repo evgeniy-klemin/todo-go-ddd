@@ -3,20 +3,41 @@
 package ports
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
-	"github.com/pkg/errors"
 
 	"github.com/evgeniy-klemin/todo/internal/item/app"
+	"github.com/evgeniy-klemin/todo/internal/item/domain"
 )
 
-type HttpServer struct {
-	itemService *app.ItemService
+// ItemService defines the port that the HTTP handler requires from the application layer.
+type ItemService interface {
+	Create(ctx context.Context, name string, position *int) (*domain.Item, error)
+	GetItemByID(ctx context.Context, id string) (*domain.Item, error)
+	List(ctx context.Context, query app.ListQuery) (app.ListResult, error)
+	Update(ctx context.Context, reqItem *app.Item) (*domain.Item, error)
 }
 
-func NewHttpServer(itemService *app.ItemService) *HttpServer {
+func httpError(ctx echo.Context, err error) error {
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		return ctx.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	case errors.Is(err, domain.ErrNameLength), errors.Is(err, domain.ErrPositionValue):
+		return ctx.JSON(http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+	default:
+		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+	}
+}
+
+type HttpServer struct {
+	itemService ItemService
+}
+
+func NewHttpServer(itemService ItemService) *HttpServer {
 	return &HttpServer{
 		itemService: itemService,
 	}
@@ -24,43 +45,50 @@ func NewHttpServer(itemService *app.ItemService) *HttpServer {
 
 // (GET /items)
 func (h *HttpServer) GetItems(ctx echo.Context, params GetItemsParams) error {
+	query, err := buildListQuery(params)
+	if err != nil {
+		return httpError(ctx, err)
+	}
+
+	result, err := h.itemService.List(ctx.Request().Context(), query)
+	if err != nil {
+		return httpError(ctx, err)
+	}
+
+	paginator := NewPaginator(query.Page, query.PerPage, result.TotalCount)
+	ctx.Response().Header().Set("X-Page", strconv.Itoa(query.Page))
+	ctx.Response().Header().Set("X-Per-Page", strconv.Itoa(query.PerPage))
+	ctx.Response().Header().Set("X-Total-Count", strconv.Itoa(result.TotalCount))
+	ctx.Response().Header().Set("Link", links(ctx.Request(), paginator))
+
+	return ctx.JSON(http.StatusOK, appItemsToRespItems(result.Items))
+}
+
+func buildListQuery(params GetItemsParams) (app.ListQuery, error) {
 	fields, err := getAppFieldsFromGetParam(params.Fields)
 	if err != nil {
-		return err
+		return app.ListQuery{}, err
 	}
-	perPage := 20
-	if params.PerPage != nil {
-		perPage = int(*params.PerPage)
+	sortFields, err := getSortFieldsFromGetParam(params.Sort)
+	if err != nil {
+		return app.ListQuery{}, err
 	}
 	page := 1
 	if params.Page != nil {
 		page = int(*params.Page)
 	}
-	sortFields, err := getSortFieldsFromGetParam(params.Sort)
-	if err != nil {
-		return err
+	perPage := 20
+	if params.PerPage != nil {
+		perPage = int(*params.PerPage)
 	}
-
-	count, err := h.itemService.Count(ctx.Request().Context(), params.Done)
-	if err != nil {
-		ctx.Error(err)
-		return err
-	}
-	items, err := h.itemService.All(ctx.Request().Context(), params.Done, fields, page, perPage, sortFields)
-	if err != nil {
-		ctx.Error(err)
-		return err
-	}
-
-	paginator := NewPaginator(page, perPage, count)
-
-	respItems := appItemsToRespItems(items)
-	ctx.Response().Header().Set("X-Page", strconv.Itoa(page))
-	ctx.Response().Header().Set("X-Per-Page", strconv.Itoa(perPage))
-	ctx.Response().Header().Set("X-Total-Count", strconv.Itoa(count))
-	ctx.Response().Header().Set("Link", links(ctx.Request(), paginator))
-
-	return ctx.JSON(http.StatusCreated, respItems)
+	return app.ListQuery{
+		Done:       params.Done,
+		Search:     params.Q,
+		Fields:     fields,
+		Page:       page,
+		PerPage:    perPage,
+		SortFields: sortFields,
+	}, nil
 }
 
 // Create New User
@@ -68,8 +96,7 @@ func (h *HttpServer) GetItems(ctx echo.Context, params GetItemsParams) error {
 func (h *HttpServer) PostItems(ctx echo.Context) error {
 	var itemPost ItemPost
 	if err := ctx.Bind(&itemPost); err != nil {
-		ctx.Error(err)
-		return errors.Wrap(err, "некорректные параметры")
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "некорректные параметры"})
 	}
 	var position *int
 	if itemPost.Position != nil {
@@ -78,8 +105,7 @@ func (h *HttpServer) PostItems(ctx echo.Context) error {
 	}
 	item, err := h.itemService.Create(ctx.Request().Context(), itemPost.Name, position)
 	if err != nil {
-		ctx.Error(err)
-		return err
+		return httpError(ctx, err)
 	}
 
 	respItem := domainItemToResp(item)
@@ -92,8 +118,7 @@ func (h *HttpServer) PostItems(ctx echo.Context) error {
 func (h *HttpServer) GetItemsItemId(ctx echo.Context, itemId ItemId) error {
 	item, err := h.itemService.GetItemByID(ctx.Request().Context(), string(itemId))
 	if err != nil {
-		ctx.Error(err)
-		return err
+		return httpError(ctx, err)
 	}
 
 	respItem := domainItemToResp(item)
@@ -106,8 +131,7 @@ func (h *HttpServer) GetItemsItemId(ctx echo.Context, itemId ItemId) error {
 func (h *HttpServer) PatchItemsItemid(ctx echo.Context, itemId ItemId) error {
 	var itemPatch ItemPatch
 	if err := ctx.Bind(&itemPatch); err != nil {
-		ctx.Error(err)
-		return errors.Wrap(err, "некорректные параметры")
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "некорректные параметры"})
 	}
 
 	appItem := &app.Item{
@@ -119,8 +143,7 @@ func (h *HttpServer) PatchItemsItemid(ctx echo.Context, itemId ItemId) error {
 
 	item, err := h.itemService.Update(ctx.Request().Context(), appItem)
 	if err != nil {
-		ctx.Error(err)
-		return err
+		return httpError(ctx, err)
 	}
 
 	respItem := domainItemToResp(item)

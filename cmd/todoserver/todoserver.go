@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	_ "github.com/go-sql-driver/mysql"
@@ -16,6 +15,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/evgeniy-klemin/todo"
+	"github.com/evgeniy-klemin/todo/db/schema"
 	item "github.com/evgeniy-klemin/todo/internal/item"
 	itemports "github.com/evgeniy-klemin/todo/internal/item/ports"
 )
@@ -58,14 +58,18 @@ func server(port int) {
 	// Swagger validation
 	setOapiValidator(e)
 
-	// db, err := sql.Open("sqlite3", "file:todotest.db?cache=shared")
-	db, err := sql.Open("mysql", "todo:todo@tcp(localhost)/todotest?parseTime=true")
+	db, err := sql.Open("sqlite3", "file:todotest.db?cache=shared")
+	// db, err := sql.Open("mysql", "todo:todo@tcp(localhost)/todotest?parseTime=true")
 	if err != nil {
 		panic(err)
 	}
-	db.SetConnMaxLifetime(time.Minute * 3)
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(10)
+	ftsEnabled, err := schema.ApplyAll(db)
+	if err != nil {
+		panic(err)
+	}
+	if !ftsEnabled {
+		fmt.Fprintf(os.Stderr, "Warning: FTS5 not available, falling back to LIKE search\n")
+	}
 
 	// Containers
 	itemContainer := item.NewContainer(db)
@@ -98,9 +102,8 @@ func fixtures() {
 }
 
 func main() {
-	var port = flag.Int("port", 8080, "Port for test HTTP server")
+	var port = flag.Int("port", 3000, "Port for test HTTP server")
 	flag.Parse()
 
-	fixtures()
 	server(*port)
 }

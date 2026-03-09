@@ -40,3 +40,17 @@ type SortField struct {
 	SortDirection SortDirection
 }
 type SortFields []SortField
+
+type ListQuery struct {
+	Done       *bool
+	Search     *string
+	Fields     []ItemField
+	Page       int
+	PerPage    int
+	SortFields SortFields
+}
+
+type ListResult struct {
+	Items      []Item
+	TotalCount int
+}
