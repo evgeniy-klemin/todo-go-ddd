@@ -51,12 +51,12 @@ func (q *Queries) InsertItem(ctx context.Context, arg InsertItemParams) error {
 }
 
 const maxPosition = `-- name: MaxPosition :one
-SELECT COALESCE(MAX(position), 0) as max_position FROM item
+SELECT CAST(COALESCE(MAX(position), 0) AS INTEGER) as max_position FROM item
 `
 
-func (q *Queries) MaxPosition(ctx context.Context) (interface{}, error) {
+func (q *Queries) MaxPosition(ctx context.Context) (int64, error) {
 	row := q.db.QueryRowContext(ctx, maxPosition)
-	var max_position interface{}
+	var max_position int64
 	err := row.Scan(&max_position)
 	return max_position, err
 }

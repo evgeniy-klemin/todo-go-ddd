@@ -8,4 +8,4 @@ INSERT INTO item (id, name, position, done, created_at) VALUES (?, ?, ?, ?, ?);
 UPDATE item SET name = ?, position = ?, done = ? WHERE id = ?;
 
 -- name: MaxPosition :one
-SELECT COALESCE(MAX(position), 0) as max_position FROM item;
+SELECT CAST(COALESCE(MAX(position), 0) AS SIGNED) as max_position FROM item;

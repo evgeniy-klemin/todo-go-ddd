@@ -178,7 +178,8 @@ func (r *Repository) All(
 		q += " WHERE " + strings.Join(conditions, " AND ")
 	}
 	q += " ORDER BY " + strings.Join(orderBy, ", ")
-	q += fmt.Sprintf(" LIMIT %d OFFSET %d", perPage, perPage*(page-1))
+	q += " LIMIT ? OFFSET ?"
+	args = append(args, perPage, perPage*(page-1))
 
 	rows, err := r.db.QueryContext(ctx, q, args...)
 	if err != nil {

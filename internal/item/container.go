@@ -2,6 +2,7 @@ package item
 
 import (
 	"database/sql"
+	"fmt"
 
 	"github.com/labstack/echo/v4"
 
@@ -24,8 +25,10 @@ func NewContainer(db *sql.DB, driver string, ftsEnabled bool) *Container {
 	switch driver {
 	case schema.DriverMySQL:
 		repo = repository.NewMySQL(db, ftsEnabled)
-	default:
+	case schema.DriverSQLite:
 		repo = repository.NewSQLite(db, ftsEnabled)
+	default:
+		panic(fmt.Sprintf("unsupported database driver: %s", driver))
 	}
 	service := app.NewItemService(repo, repo)
 	httpServer := ports.NewHttpServer(service)

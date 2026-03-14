@@ -18,3 +18,4 @@ test-integration:
 
 generate:
 	go generate ./...
+	sqlc generate

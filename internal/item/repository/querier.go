@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"time"
 )
 
@@ -27,27 +26,3 @@ type querier interface {
 	WithTx(tx *sql.Tx) querier
 }
 
-// toInt64 converts the interface{} returned by MaxPosition queries to int64.
-// SQLite returns int64 for integer columns; MySQL may return []byte (encoded as ASCII digits).
-func toInt64(v interface{}) (int64, error) {
-	switch n := v.(type) {
-	case int64:
-		return n, nil
-	case int32:
-		return int64(n), nil
-	case []byte:
-		// MySQL sometimes encodes numeric results as a byte slice of ASCII digits.
-		var result int64
-		for _, b := range n {
-			if b < '0' || b > '9' {
-				return 0, fmt.Errorf("unexpected byte %q in max_position value", b)
-			}
-			result = result*10 + int64(b-'0')
-		}
-		return result, nil
-	case nil:
-		return 0, nil
-	default:
-		return 0, fmt.Errorf("unexpected type %T for max_position", v)
-	}
-}

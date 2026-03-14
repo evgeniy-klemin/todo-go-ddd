@@ -50,11 +50,7 @@ func (a *sqliteAdapter) UpdateItem(ctx context.Context, name string, position in
 }
 
 func (a *sqliteAdapter) MaxPosition(ctx context.Context) (int64, error) {
-	v, err := a.q.MaxPosition(ctx)
-	if err != nil {
-		return 0, err
-	}
-	return toInt64(v)
+	return a.q.MaxPosition(ctx)
 }
 
 func (a *sqliteAdapter) WithTx(tx *sql.Tx) querier {
