@@ -23,43 +23,40 @@ const DriverMySQL = "mysql"
 var ItemTableCreate string
 
 // ItemIndexCreateSQLite is the DDL for the position index (SQLite supports IF NOT EXISTS).
-const ItemIndexCreateSQLite = `CREATE INDEX IF NOT EXISTS idx_item_position ON item (position)`
+//
+//go:embed item_index_sqlite.sql
+var ItemIndexCreateSQLite string
 
 // ItemIndexCreateMySQL is the DDL for the position index (MySQL lacks IF NOT EXISTS for indexes).
-const ItemIndexCreateMySQL = `CREATE INDEX idx_item_position ON item (position)`
+//
+//go:embed item_index_mysql.sql
+var ItemIndexCreateMySQL string
 
 // ItemFulltextCreateMySQL is the DDL for the MySQL FULLTEXT index on the name column.
-const ItemFulltextCreateMySQL = `CREATE FULLTEXT INDEX idx_item_fulltext ON item (name)`
+//
+//go:embed item_fulltext_mysql.sql
+var ItemFulltextCreateMySQL string
 
 // FTSTable creates the FTS5 virtual table for full-text search.
-const FTSTable = `CREATE VIRTUAL TABLE IF NOT EXISTS item_fts USING fts5(name, content='item', content_rowid='rowid')`
+//
+//go:embed item_fts.sql
+var FTSTable string
 
-// FTSTriggerInsert keeps the FTS index in sync on INSERT.
-const FTSTriggerInsert = `CREATE TRIGGER IF NOT EXISTS item_ai AFTER INSERT ON item BEGIN
-	INSERT INTO item_fts(rowid, name) VALUES (new.rowid, new.name);
-END`
-
-// FTSTriggerDelete keeps the FTS index in sync on DELETE.
-const FTSTriggerDelete = `CREATE TRIGGER IF NOT EXISTS item_ad AFTER DELETE ON item BEGIN
-	INSERT INTO item_fts(item_fts, rowid, name) VALUES('delete', old.rowid, old.name);
-END`
-
-// FTSTriggerUpdate keeps the FTS index in sync on UPDATE.
-const FTSTriggerUpdate = `CREATE TRIGGER IF NOT EXISTS item_au AFTER UPDATE ON item BEGIN
-	INSERT INTO item_fts(item_fts, rowid, name) VALUES('delete', old.rowid, old.name);
-	INSERT INTO item_fts(rowid, name) VALUES (new.rowid, new.name);
-END`
+// FTSTriggers contains the DDL for all three FTS sync triggers (INSERT, DELETE, UPDATE).
+//
+//go:embed item_fts_triggers.sql
+var FTSTriggers string
 
 // FTSRebuild re-indexes all existing rows in the item table into the FTS index.
-const FTSRebuild = `INSERT INTO item_fts(item_fts) VALUES('rebuild')`
+//
+//go:embed item_fts_rebuild.sql
+var FTSRebuild string
 
 // DropFTSTriggers removes FTS triggers (useful when FTS5 is not available but stale
 // triggers remain from a previous run).
-const DropFTSTriggers = `
-DROP TRIGGER IF EXISTS item_ai;
-DROP TRIGGER IF EXISTS item_ad;
-DROP TRIGGER IF EXISTS item_au;
-`
+//
+//go:embed item_fts_drop_triggers.sql
+var DropFTSTriggers string
 
 // Apply creates the base item table and position index. It does not set up FTS5.
 // For MySQL, the index creation ignores "duplicate key" errors since MySQL does not
@@ -94,10 +91,10 @@ func ApplyFTS(db *sql.DB) bool {
 		return false
 	}
 
-	for _, stmt := range []string{FTSTriggerInsert, FTSTriggerDelete, FTSTriggerUpdate} {
-		if _, err := db.Exec(stmt); err != nil {
-			return false
-		}
+	// FTSTriggers contains all three trigger DDL statements separated by semicolons.
+	// go-sqlite3 uses sqlite3_exec internally, which handles multiple statements.
+	if _, err := db.Exec(FTSTriggers); err != nil {
+		return false
 	}
 
 	// Rebuild FTS index so any rows already in item are indexed
