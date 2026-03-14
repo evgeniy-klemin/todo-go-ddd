@@ -18,7 +18,7 @@ function App() {
     try {
       const done = filter === 'all' ? undefined : filter === 'done'
       const q = search.trim() || undefined
-      const result = await ItemsService.getItems(100, 1, undefined, undefined, done, q)
+      const result = await ItemsService.getItems(100, 1, 'position', undefined, done, q)
       setItems(result ?? [])
     } catch {
       setError('Failed to load items')
@@ -41,6 +41,19 @@ function App() {
       fetchItems()
     } catch {
       setError('Failed to create item')
+    }
+  }
+
+  const moveItem = async (index: number, direction: 'up' | 'down') => {
+    const neighbor = direction === 'up' ? items[index - 1] : items[index + 1]
+    const current = items[index]
+    if (!neighbor || current.id == null || neighbor.id == null) return
+    try {
+      await ItemsService.patchItemsItemid(current.id, { position: neighbor.position })
+      await ItemsService.patchItemsItemid(neighbor.id, { position: current.position })
+      fetchItems()
+    } catch {
+      setError('Failed to reorder item')
     }
   }
 
@@ -163,7 +176,7 @@ function App() {
               </div>
             ) : (
               <ul className="space-y-1.5">
-                {items.map(item => (
+                {items.map((item, index) => (
                   <li
                     key={item.id}
                     className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all hover:bg-slate-50 ${
@@ -187,6 +200,28 @@ function App() {
                     <span className={`flex-1 text-sm ${item.done ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
                       {item.name}
                     </span>
+                    <div className="flex flex-col opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => moveItem(index, 'up')}
+                        disabled={index === 0}
+                        className="flex h-4 w-4 items-center justify-center rounded text-slate-400 hover:text-slate-600 disabled:invisible"
+                        aria-label="Move up"
+                      >
+                        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => moveItem(index, 'down')}
+                        disabled={index === items.length - 1}
+                        className="flex h-4 w-4 items-center justify-center rounded text-slate-400 hover:text-slate-600 disabled:invisible"
+                        aria-label="Move down"
+                      >
+                        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
