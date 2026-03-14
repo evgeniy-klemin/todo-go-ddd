@@ -7,32 +7,34 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/evgeniy-klemin/todo/db/schema"
+	"github.com/evgeniy-klemin/todo/db/driver"
+	"github.com/evgeniy-klemin/todo/db/fts"
+	"github.com/evgeniy-klemin/todo/db/migrations"
 	"github.com/evgeniy-klemin/todo/internal/item/domain"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 func setupTestDB(t *testing.T) (*sql.DB, bool) {
 	t.Helper()
-	db, err := sql.Open(schema.DriverSQLite, ":memory:")
+	db, err := sql.Open(driver.SQLite, ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	ftsEnabled, err := schema.ApplyAll(db, schema.DriverSQLite)
-	if err != nil {
-		t.Fatalf("apply schema: %v", err)
+	if err := migrations.Run(db, driver.SQLite); err != nil {
+		t.Fatalf("apply migrations: %v", err)
 	}
+	ftsEnabled := fts.Apply(db)
 	return db, ftsEnabled
 }
 
 func setupTestDBWithoutFTS(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := sql.Open(schema.DriverSQLite, ":memory:")
+	db, err := sql.Open(driver.SQLite, ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	if err := schema.Apply(db, schema.DriverSQLite); err != nil {
-		t.Fatalf("apply schema: %v", err)
+	if err := migrations.Run(db, driver.SQLite); err != nil {
+		t.Fatalf("apply migrations: %v", err)
 	}
 	return db
 }

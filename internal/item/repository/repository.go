@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/evgeniy-klemin/todo/db/schema"
+	"github.com/evgeniy-klemin/todo/db/driver"
 	"github.com/evgeniy-klemin/todo/internal/item/app"
 	"github.com/evgeniy-klemin/todo/internal/item/domain"
 )
@@ -25,7 +25,7 @@ func NewSQLite(db *sql.DB, ftsEnabled bool) *Repository {
 	return &Repository{
 		db:         db,
 		q:          newSQLiteAdapter(db),
-		driver:     schema.DriverSQLite,
+		driver:     driver.SQLite,
 		ftsEnabled: ftsEnabled,
 	}
 }
@@ -34,7 +34,7 @@ func NewMySQL(db *sql.DB, ftsEnabled bool) *Repository {
 	return &Repository{
 		db:         db,
 		q:          newMySQLAdapter(db),
-		driver:     schema.DriverMySQL,
+		driver:     driver.MySQL,
 		ftsEnabled: ftsEnabled,
 	}
 }
@@ -158,7 +158,7 @@ func (r *Repository) All(
 
 	if search != nil && *search != "" {
 		if r.ftsEnabled {
-			if r.driver == schema.DriverMySQL {
+			if r.driver == driver.MySQL {
 				mysqlQuery := buildMySQLFTSQuery(*search)
 				conditions = append(conditions, "MATCH(name) AGAINST(? IN BOOLEAN MODE)")
 				args = append(args, mysqlQuery)
@@ -241,7 +241,7 @@ func (r *Repository) Count(ctx context.Context, done *bool, search *string) (int
 
 	if search != nil && *search != "" {
 		if r.ftsEnabled {
-			if r.driver == schema.DriverMySQL {
+			if r.driver == driver.MySQL {
 				mysqlQuery := buildMySQLFTSQuery(*search)
 				conditions = append(conditions, "MATCH(name) AGAINST(? IN BOOLEAN MODE)")
 				args = append(args, mysqlQuery)

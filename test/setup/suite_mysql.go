@@ -7,7 +7,8 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/evgeniy-klemin/todo/db/schema"
+	"github.com/evgeniy-klemin/todo/db/driver"
+	"github.com/evgeniy-klemin/todo/db/migrations"
 )
 
 type MySQLSuite struct {
@@ -22,7 +23,7 @@ func (s *MySQLSuite) SetupSuite() {
 		dsn = "todo:todo@tcp(localhost:3306)/todotest?parseTime=true"
 	}
 
-	db, err := sql.Open(schema.DriverMySQL, dsn)
+	db, err := sql.Open(driver.MySQL, dsn)
 	if err != nil {
 		s.T().Skipf("MySQL not available: %v", err)
 	}
@@ -32,9 +33,9 @@ func (s *MySQLSuite) SetupSuite() {
 	}
 
 	s.DB = db
-	ftsEnabled, err := schema.ApplyAll(db, schema.DriverMySQL)
+	err = migrations.Run(db, driver.MySQL)
 	s.Require().NoError(err)
-	s.FTSEnabled = ftsEnabled
+	s.FTSEnabled = true // FULLTEXT index handled by goose migration 00003
 }
 
 func (s *MySQLSuite) TearDownSuite() {

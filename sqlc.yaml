@@ -2,14 +2,14 @@ version: "2"
 sql:
   - engine: "sqlite"
     queries: "db/queries/sqlite/"
-    schema: "db/schema/item.sql"
+    schema: "db/migrations/00001_create_item_table.sql"
     gen:
       go:
         package: "sqlitedb"
         out: "internal/item/repository/sqlitedb"
   - engine: "mysql"
     queries: "db/queries/mysql/"
-    schema: "db/schema/item.sql"
+    schema: "db/migrations/00001_create_item_table.sql"
     gen:
       go:
         package: "mysqldb"
