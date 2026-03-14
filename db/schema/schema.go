@@ -4,6 +4,7 @@
 package schema
 
 import (
+	_ "embed"
 	"database/sql"
 	"errors"
 
@@ -16,15 +17,10 @@ const DriverSQLite = "sqlite3"
 // DriverMySQL is the driver name for MySQL.
 const DriverMySQL = "mysql"
 
-// ItemTableCreate is the DDL for the core item table.
-const ItemTableCreate = `
-CREATE TABLE IF NOT EXISTS item (
-	id VARCHAR(36) NOT NULL PRIMARY KEY,
-	name VARCHAR(1000) NOT NULL,
-	position INTEGER NOT NULL DEFAULT 1,
-	done BOOL NOT NULL DEFAULT FALSE,
-	created_at DATETIME NOT NULL
-)`
+// ItemTableCreate is the DDL for the core item table, embedded from item.sql.
+//
+//go:embed item.sql
+var ItemTableCreate string
 
 // ItemIndexCreateSQLite is the DDL for the position index (SQLite supports IF NOT EXISTS).
 const ItemIndexCreateSQLite = `CREATE INDEX IF NOT EXISTS idx_item_position ON item (position)`
