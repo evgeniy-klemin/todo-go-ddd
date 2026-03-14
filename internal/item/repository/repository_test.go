@@ -60,7 +60,7 @@ func TestSearch(t *testing.T) {
 			if !ftsEnabled {
 				t.Skip("FTS5 not available")
 			}
-			repo := New(db, schema.DriverSQLite, true)
+			repo := NewSQLite(db, true)
 			insertItems(t, repo, "Buy milk", "Buy eggs", "Walk the dog", "Read a book")
 
 			search := "buy"
@@ -79,7 +79,7 @@ func TestSearch(t *testing.T) {
 			if !ftsEnabled {
 				t.Skip("FTS5 not available")
 			}
-			repo := New(db, schema.DriverSQLite, true)
+			repo := NewSQLite(db, true)
 			insertItems(t, repo, "Buy milk")
 
 			search := "xyz"
@@ -98,7 +98,7 @@ func TestSearch(t *testing.T) {
 			if !ftsEnabled {
 				t.Skip("FTS5 not available")
 			}
-			repo := New(db, schema.DriverSQLite, true)
+			repo := NewSQLite(db, true)
 			insertItems(t, repo, "Buy Milk")
 
 			search := "buy milk"
@@ -117,7 +117,7 @@ func TestSearch(t *testing.T) {
 			if !ftsEnabled {
 				t.Skip("FTS5 not available")
 			}
-			repo := New(db, schema.DriverSQLite, true)
+			repo := NewSQLite(db, true)
 			insertItems(t, repo, "Buy milk and eggs")
 
 			search := "milk"
@@ -136,7 +136,7 @@ func TestSearch(t *testing.T) {
 			if !ftsEnabled {
 				t.Skip("FTS5 not available")
 			}
-			repo := New(db, schema.DriverSQLite, true)
+			repo := NewSQLite(db, true)
 			insertItems(t, repo, "Buying groceries", "Buy milk", "Walk the dog")
 
 			search := "buy"
@@ -155,7 +155,7 @@ func TestSearch(t *testing.T) {
 			if !ftsEnabled {
 				t.Skip("FTS5 not available")
 			}
-			repo := New(db, schema.DriverSQLite, true)
+			repo := NewSQLite(db, true)
 			insertItems(t, repo, "Buy milk and eggs", "Buy bread", "Get milk")
 
 			search := "buy milk"
@@ -174,7 +174,7 @@ func TestSearch(t *testing.T) {
 			if !ftsEnabled {
 				t.Skip("FTS5 not available")
 			}
-			repo := New(db, schema.DriverSQLite, true)
+			repo := NewSQLite(db, true)
 			insertItems(t, repo, "Task 1", "Task 2", "Task 3")
 
 			items, err := repo.All(context.Background(), nil, nil, nil, 1, 20, nil)
@@ -191,7 +191,7 @@ func TestSearch(t *testing.T) {
 		t.Run("LIKESearch", func(t *testing.T) {
 			db := setupTestDBWithoutFTS(t)
 			defer db.Close()
-			repo := New(db, schema.DriverSQLite, false)
+			repo := NewSQLite(db, false)
 			insertItems(t, repo, "Buy milk", "Buy eggs", "Walk the dog", "Read a book")
 
 			search := "buy"
@@ -207,7 +207,7 @@ func TestSearch(t *testing.T) {
 		t.Run("LIKECount", func(t *testing.T) {
 			db := setupTestDBWithoutFTS(t)
 			defer db.Close()
-			repo := New(db, schema.DriverSQLite, false)
+			repo := NewSQLite(db, false)
 			insertItems(t, repo, "Buy milk", "Buy eggs", "Walk the dog")
 
 			search := "buy"
@@ -267,7 +267,7 @@ func TestCount(t *testing.T) {
 	t.Run("SearchFiltersCount", func(t *testing.T) {
 		db, ftsEnabled := setupTestDB(t)
 		defer db.Close()
-		repo := New(db, schema.DriverSQLite, ftsEnabled)
+		repo := NewSQLite(db, ftsEnabled)
 		insertItems(t, repo, "Buy milk", "Buy eggs", "Walk the dog")
 
 		search := "buy"
@@ -294,7 +294,7 @@ func TestPosition(t *testing.T) {
 	t.Run("ConcurrentCreation", func(t *testing.T) {
 		db, ftsEnabled := setupTestDB(t)
 		defer db.Close()
-		repo := New(db, schema.DriverSQLite, ftsEnabled)
+		repo := NewSQLite(db, ftsEnabled)
 		ctx := context.Background()
 
 		const numGoroutines = 20
@@ -346,7 +346,7 @@ func TestPosition(t *testing.T) {
 	t.Run("SequentialIncrement", func(t *testing.T) {
 		db, ftsEnabled := setupTestDB(t)
 		defer db.Close()
-		repo := New(db, schema.DriverSQLite, ftsEnabled)
+		repo := NewSQLite(db, ftsEnabled)
 		ctx := context.Background()
 
 		for i := 1; i <= 5; i++ {
@@ -367,7 +367,7 @@ func TestPosition(t *testing.T) {
 	t.Run("ContinuesFromMax", func(t *testing.T) {
 		db, ftsEnabled := setupTestDB(t)
 		defer db.Close()
-		repo := New(db, schema.DriverSQLite, ftsEnabled)
+		repo := NewSQLite(db, ftsEnabled)
 		ctx := context.Background()
 
 		// Insert an item with position 10 using regular Add

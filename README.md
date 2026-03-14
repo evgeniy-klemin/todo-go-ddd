@@ -6,9 +6,8 @@ A todo API built with Go using Domain-Driven Design (DDD) architecture. Supports
 
 - Go 1.17+
 - Docker & Docker Compose (for MySQL)
-- `go install github.com/volatiletech/sqlboiler/v4@latest` — ORM
-- `go install github.com/volatiletech/sqlboiler/v4/drivers/sqlboiler-mysql@latest` — ORM MySQL driver
 - `go get github.com/deepmap/oapi-codegen/pkg/codegen@v1.8.2` — OpenAPI codegen
+- `go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest` — sqlc query codegen
 
 ## Quick Start
 
@@ -45,7 +44,18 @@ Default DSN per driver:
 | `make run-mysql`       | Start MySQL via docker-compose and run server     |
 | `make test`            | Run unit tests (SQLite, no external dependencies) |
 | `make test-integration`| Run integration tests against MySQL               |
-| `make generate`        | Regenerate SQLBoiler models and OpenAPI code      |
+| `make generate`        | Regenerate OpenAPI and sqlc query code            |
+
+## Code Generation
+
+This project uses two codegen tools:
+
+- **OpenAPI**: `go generate ./...` regenerates HTTP handlers from `docs/openapi.yaml`
+- **sqlc**: `sqlc generate` regenerates type-safe query code from SQL files in `db/queries/`
+
+Run `make generate` to invoke both.
+
+After modifying any file under `db/queries/`, run `sqlc generate` to keep the generated packages (`internal/item/repository/sqlitedb/` and `internal/item/repository/mysqldb/`) in sync.
 
 ## Run
 
@@ -60,7 +70,7 @@ internal/item/
   domain/             Domain models and business logic
   app/                Application services
   ports/              HTTP handlers (OpenAPI)
-  repository/         Database access (SQLBoiler)
+  repository/         Database access (sqlc)
 db/
   schema/             Schema definitions (single source of truth)
   fixtures/           Test data

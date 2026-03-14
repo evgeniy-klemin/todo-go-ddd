@@ -17,5 +17,5 @@ test-integration:
 	go test ./test/... -count=1 -v
 
 generate:
-	cd internal/item && sqlboiler mysql
 	go generate ./...
+	sqlc generate
