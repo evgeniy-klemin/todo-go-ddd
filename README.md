@@ -6,8 +6,6 @@ A todo API built with Go using Domain-Driven Design (DDD) architecture. Supports
 
 - Go 1.17+
 - Docker & Docker Compose (for MySQL)
-- `go install github.com/volatiletech/sqlboiler/v4@latest` — ORM
-- `go install github.com/volatiletech/sqlboiler/v4/drivers/sqlboiler-mysql@latest` — ORM MySQL driver
 - `go get github.com/deepmap/oapi-codegen/pkg/codegen@v1.8.2` — OpenAPI codegen
 
 ## Quick Start
@@ -45,7 +43,7 @@ Default DSN per driver:
 | `make run-mysql`       | Start MySQL via docker-compose and run server     |
 | `make test`            | Run unit tests (SQLite, no external dependencies) |
 | `make test-integration`| Run integration tests against MySQL               |
-| `make generate`        | Regenerate SQLBoiler models and OpenAPI code      |
+| `make generate`        | Regenerate OpenAPI code                           |
 
 ## Run
 
@@ -60,7 +58,7 @@ internal/item/
   domain/             Domain models and business logic
   app/                Application services
   ports/              HTTP handlers (OpenAPI)
-  repository/         Database access (SQLBoiler)
+  repository/         Database access (sqlc)
 db/
   schema/             Schema definitions (single source of truth)
   fixtures/           Test data
