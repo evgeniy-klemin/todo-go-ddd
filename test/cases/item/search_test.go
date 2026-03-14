@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/evgeniy-klemin/todo/db/schema"
 	"github.com/evgeniy-klemin/todo/internal/item/domain"
 	"github.com/evgeniy-klemin/todo/internal/item/repository"
 	"github.com/evgeniy-klemin/todo/test/setup"
@@ -23,7 +22,7 @@ func TestSearch(t *testing.T) {
 
 func (s *SearchSuite) insertItems(names ...string) {
 	ctx := context.Background()
-	repo := repository.New(s.DB, schema.DriverMySQL, s.FTSEnabled)
+	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 	for _, name := range names {
 		item, err := domain.NewItem(name, 1)
 		s.Require().NoError(err)
@@ -34,7 +33,7 @@ func (s *SearchSuite) insertItems(names ...string) {
 
 func (s *SearchSuite) TestExactWordMatch() {
 	s.insertItems("Buy milk", "Buy eggs", "Walk the dog")
-	repo := repository.New(s.DB, schema.DriverMySQL, s.FTSEnabled)
+	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	search := "buy"
 	items, err := repo.All(context.Background(), nil, &search, nil, 1, 20, nil)
@@ -44,7 +43,7 @@ func (s *SearchSuite) TestExactWordMatch() {
 
 func (s *SearchSuite) TestPrefixMatch() {
 	s.insertItems("Buying groceries", "Buy milk", "Walk the dog")
-	repo := repository.New(s.DB, schema.DriverMySQL, s.FTSEnabled)
+	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	search := "buy"
 	items, err := repo.All(context.Background(), nil, &search, nil, 1, 20, nil)
@@ -54,7 +53,7 @@ func (s *SearchSuite) TestPrefixMatch() {
 
 func (s *SearchSuite) TestCaseInsensitive() {
 	s.insertItems("Buy Milk")
-	repo := repository.New(s.DB, schema.DriverMySQL, s.FTSEnabled)
+	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	search := "buy"
 	items, err := repo.All(context.Background(), nil, &search, nil, 1, 20, nil)
@@ -64,7 +63,7 @@ func (s *SearchSuite) TestCaseInsensitive() {
 
 func (s *SearchSuite) TestMultipleWords() {
 	s.insertItems("Buy milk and eggs", "Buy bread", "Get milk")
-	repo := repository.New(s.DB, schema.DriverMySQL, s.FTSEnabled)
+	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	search := "buy milk"
 	items, err := repo.All(context.Background(), nil, &search, nil, 1, 20, nil)
@@ -74,7 +73,7 @@ func (s *SearchSuite) TestMultipleWords() {
 
 func (s *SearchSuite) TestNoResults() {
 	s.insertItems("Buy milk")
-	repo := repository.New(s.DB, schema.DriverMySQL, s.FTSEnabled)
+	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	search := "xyz"
 	items, err := repo.All(context.Background(), nil, &search, nil, 1, 20, nil)
@@ -84,7 +83,7 @@ func (s *SearchSuite) TestNoResults() {
 
 func (s *SearchSuite) TestNilSearchReturnsAll() {
 	s.insertItems("Task 1", "Task 2", "Task 3")
-	repo := repository.New(s.DB, schema.DriverMySQL, s.FTSEnabled)
+	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	items, err := repo.All(context.Background(), nil, nil, nil, 1, 20, nil)
 	s.Require().NoError(err)
@@ -96,7 +95,7 @@ func (s *SearchSuite) TestSearchWithPagination() {
 		s.insertItems(fmt.Sprintf("Task item %d", i))
 	}
 	s.insertItems("Walk dog")
-	repo := repository.New(s.DB, schema.DriverMySQL, s.FTSEnabled)
+	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	search := "task"
 	// Page 1
@@ -112,7 +111,7 @@ func (s *SearchSuite) TestSearchWithPagination() {
 
 func (s *SearchSuite) TestCountWithSearch() {
 	s.insertItems("Buy milk", "Buy eggs", "Walk the dog")
-	repo := repository.New(s.DB, schema.DriverMySQL, s.FTSEnabled)
+	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	search := "buy"
 	count, err := repo.Count(context.Background(), nil, &search)

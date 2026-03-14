@@ -5,6 +5,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/evgeniy-klemin/todo/db/schema"
 	"github.com/evgeniy-klemin/todo/internal/item/app"
 	"github.com/evgeniy-klemin/todo/internal/item/ports"
 	"github.com/evgeniy-klemin/todo/internal/item/repository"
@@ -19,10 +20,14 @@ func (c *Container) RegisterHandlers(e *echo.Echo) {
 }
 
 func NewContainer(db *sql.DB, driver string, ftsEnabled bool) *Container {
-	repository := repository.New(db, driver, ftsEnabled)
-	service := app.NewItemService(repository, repository)
-	httpServer := ports.NewHttpServer(service)
-	return &Container{
-		httpServer: httpServer,
+	var repo *repository.Repository
+	switch driver {
+	case schema.DriverMySQL:
+		repo = repository.NewMySQL(db, ftsEnabled)
+	default:
+		repo = repository.NewSQLite(db, ftsEnabled)
 	}
+	service := app.NewItemService(repo, repo)
+	httpServer := ports.NewHttpServer(service)
+	return &Container{httpServer: httpServer}
 }

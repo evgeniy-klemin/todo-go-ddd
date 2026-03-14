@@ -6,41 +6,45 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/evgeniy-klemin/todo/db/schema"
 	"github.com/evgeniy-klemin/todo/internal/item/app"
 	"github.com/evgeniy-klemin/todo/internal/item/domain"
-	"github.com/evgeniy-klemin/todo/internal/item/repository/models"
-	"github.com/pkg/errors"
-	"github.com/volatiletech/sqlboiler/v4/boil"
-	"github.com/volatiletech/sqlboiler/v4/queries"
-	"github.com/volatiletech/sqlboiler/v4/queries/qm"
 )
 
 type Repository struct {
 	db         *sql.DB
+	q          querier
 	mu         sync.Mutex
 	driver     string
 	ftsEnabled bool
 }
 
-func New(db *sql.DB, driver string, ftsEnabled bool) *Repository {
+func NewSQLite(db *sql.DB, ftsEnabled bool) *Repository {
 	return &Repository{
 		db:         db,
-		driver:     driver,
+		q:          newSQLiteAdapter(db),
+		driver:     schema.DriverSQLite,
+		ftsEnabled: ftsEnabled,
+	}
+}
+
+func NewMySQL(db *sql.DB, ftsEnabled bool) *Repository {
+	return &Repository{
+		db:         db,
+		q:          newMySQLAdapter(db),
+		driver:     schema.DriverMySQL,
 		ftsEnabled: ftsEnabled,
 	}
 }
 
 func (r *Repository) maxPosition(ctx context.Context) (int, error) {
-	type result struct {
-		Max sql.NullInt64 `boil:"max"`
+	result, err := r.q.MaxPosition(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("max position query: %w", err)
 	}
-	var res result
-	if err := queries.Raw("SELECT COALESCE(MAX(position), 0) as max FROM item").Bind(ctx, r.db, &res); err != nil {
-		return 0, errors.WithStack(err)
-	}
-	return int(res.Max.Int64), nil
+	return int(result), nil
 }
 
 func (r *Repository) AddWithNextPosition(ctx context.Context, item *domain.Item) (*domain.Item, error) {
@@ -60,16 +64,24 @@ func (r *Repository) AddWithNextPosition(ctx context.Context, item *domain.Item)
 }
 
 func (r *Repository) GetByID(ctx context.Context, id domain.ModelID) (*domain.Item, error) {
-	return r.getByID(ctx, r.db, id)
+	item, err := r.q.GetItemByID(ctx, id.String())
+	if err != nil {
+		return nil, err
+	}
+	return toDomainItem(item)
 }
 
-func (r *Repository) getByID(ctx context.Context, executor boil.ContextExecutor, id domain.ModelID) (*domain.Item, error) {
-	var qms []qm.QueryMod
-	qms = append(qms, qm.Where(models.ItemColumns.ID+"=?", id.String()))
-	item, err := models.Items(qms...).One(ctx, executor)
+func (r *Repository) getByID(ctx context.Context, tx *sql.Tx, id domain.ModelID) (*domain.Item, error) {
+	txQ := r.q.WithTx(tx)
+	item, err := txQ.GetItemByID(ctx, id.String())
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, err
 	}
+	return toDomainItem(item)
+}
+
+// toDomainItem converts a dbItem to a domain.Item via ReconstituteItem.
+func toDomainItem(item dbItem) (*domain.Item, error) {
 	modelID, err := domain.NewModelID(item.ID)
 	if err != nil {
 		return nil, err
@@ -79,14 +91,15 @@ func (r *Repository) getByID(ctx context.Context, executor boil.ContextExecutor,
 
 func (r *Repository) Add(ctx context.Context, item *domain.Item) (*domain.Item, error) {
 	id := item.ID()
-	dbItem := models.Item{
-		ID:        id.String(),
-		Name:      item.Name().String(),
-		Position:  item.Position().Int(),
-		Done:      item.Done(),
-		CreatedAt: item.CreatedAt().UTC(),
-	}
-	if err := dbItem.Insert(ctx, r.db, boil.Infer()); err != nil {
+	err := r.q.InsertItem(
+		ctx,
+		id.String(),
+		item.Name().String(),
+		int64(item.Position().Int()),
+		item.Done(),
+		item.CreatedAt().UTC(),
+	)
+	if err != nil {
 		return nil, fmt.Errorf("insert item: %w", err)
 	}
 	return item, nil
@@ -100,144 +113,158 @@ func (r *Repository) All(
 	page, perPage int,
 	sortFields app.SortFields,
 ) ([]app.Item, error) {
-	var columns []string
 	for _, field := range fields {
 		switch field {
-		case app.ItemFieldName:
-			columns = append(columns, models.ItemColumns.Name)
-		case app.ItemFieldPosition:
-			columns = append(columns, models.ItemColumns.Position)
-		case app.ItemFieldDone:
-			columns = append(columns, models.ItemColumns.Done)
-		case app.ItemFieldCreatedAt:
-			columns = append(columns, models.ItemColumns.CreatedAt)
+		case app.ItemFieldName, app.ItemFieldPosition, app.ItemFieldDone, app.ItemFieldCreatedAt:
 		default:
-			return nil, errors.Errorf("Field %d not found", field)
+			return nil, fmt.Errorf("field %d not found", field)
 		}
-	}
-	if len(columns) > 0 {
-		columns = append(columns, models.ItemColumns.ID)
 	}
 
 	var orderBy []string
 	for _, sortField := range sortFields {
-		var order string
+		var col string
 		switch sortField.Field {
 		case app.ItemFieldName:
-			order = models.ItemColumns.Name
+			col = "name"
 		case app.ItemFieldPosition:
-			order = models.ItemColumns.Position
+			col = "position"
 		case app.ItemFieldDone:
-			order = models.ItemColumns.Done
+			col = "done"
 		case app.ItemFieldCreatedAt:
-			order = models.ItemColumns.CreatedAt
+			col = "created_at"
 		default:
-			return nil, errors.Errorf("Field %d not found", sortFields)
+			return nil, fmt.Errorf("field %d not found", sortField.Field)
 		}
 		switch sortField.SortDirection {
 		case app.SortDirectionAsc:
-			order = order + " asc"
+			col += " asc"
 		case app.SortDirectionDesc:
-			order = order + " desc"
+			col += " desc"
 		}
-		orderBy = append(orderBy, order)
+		orderBy = append(orderBy, col)
 	}
 	if len(orderBy) == 0 {
-		orderBy = append(orderBy, models.ItemColumns.Position+" asc")
+		orderBy = append(orderBy, "position asc")
 	}
 
-	var query []qm.QueryMod
+	var conditions []string
+	var args []interface{}
 
 	if done != nil {
-		query = append(query, qm.Where(models.ItemColumns.Done+"=?", *done))
+		conditions = append(conditions, "done=?")
+		args = append(args, *done)
 	}
 
 	if search != nil && *search != "" {
 		if r.ftsEnabled {
 			if r.driver == schema.DriverMySQL {
 				mysqlQuery := buildMySQLFTSQuery(*search)
-				query = append(query, qm.Where(
-					"MATCH(name) AGAINST(? IN BOOLEAN MODE)",
-					mysqlQuery,
-				))
+				conditions = append(conditions, "MATCH(name) AGAINST(? IN BOOLEAN MODE)")
+				args = append(args, mysqlQuery)
 			} else {
 				ftsQuery := buildFTSQuery(*search)
-				query = append(query, qm.Where(
-					"item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)",
-					ftsQuery,
-				))
+				conditions = append(conditions, "item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)")
+				args = append(args, ftsQuery)
 			}
 		} else {
-			query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
+			conditions = append(conditions, "LOWER(name) LIKE LOWER(?)")
+			args = append(args, "%"+*search+"%")
 		}
 	}
 
-	query = append(query, qm.Select(columns...))
-	query = append(query, qm.Limit(perPage))
-	query = append(query, qm.Offset(perPage*(page-1)))
-	query = append(query, qm.OrderBy(strings.Join(orderBy, ", ")))
+	q := "SELECT id, name, position, done, created_at FROM item"
+	if len(conditions) > 0 {
+		q += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	q += " ORDER BY " + strings.Join(orderBy, ", ")
+	q += fmt.Sprintf(" LIMIT %d OFFSET %d", perPage, perPage*(page-1))
 
-	dbItems, err := models.Items(query...).All(ctx, r.db)
+	rows, err := r.db.QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("query items: %w", err)
 	}
+	defer rows.Close()
+
+	if len(fields) == 0 {
+		fields = app.DefaultItemFields
+	}
+
 	res := make([]app.Item, 0)
-	for _, dbItem := range dbItems {
-		item := app.Item{
-			ID: dbItem.ID,
+	for rows.Next() {
+		var (
+			id        string
+			name      string
+			position  int64
+			doneVal   bool
+			createdAt time.Time
+		)
+		if err := rows.Scan(&id, &name, &position, &doneVal, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan item: %w", err)
 		}
-		if len(fields) == 0 {
-			fields = app.DefaultItemFields
-		}
+		item := app.Item{ID: id}
 		for _, field := range fields {
 			switch field {
 			case app.ItemFieldName:
-				item.Name = &dbItem.Name
+				n := name
+				item.Name = &n
 			case app.ItemFieldPosition:
-				position := int(dbItem.Position)
-				item.Position = &position
+				p := int(position)
+				item.Position = &p
 			case app.ItemFieldDone:
-				item.Done = &dbItem.Done
+				d := doneVal
+				item.Done = &d
 			case app.ItemFieldCreatedAt:
-				item.CreatedAt = &dbItem.CreatedAt
+				t := createdAt
+				item.CreatedAt = &t
 			default:
-				return nil, errors.Errorf("Field %d not found", field)
+				return nil, fmt.Errorf("field %d not found", field)
 			}
 		}
 		res = append(res, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate items: %w", err)
 	}
 	return res, nil
 }
 
 func (r *Repository) Count(ctx context.Context, done *bool, search *string) (int, error) {
-	var query []qm.QueryMod
+	var conditions []string
+	var args []interface{}
 
 	if done != nil {
-		query = append(query, qm.Where(models.ItemColumns.Done+"=?", *done))
+		conditions = append(conditions, "done=?")
+		args = append(args, *done)
 	}
 
 	if search != nil && *search != "" {
 		if r.ftsEnabled {
 			if r.driver == schema.DriverMySQL {
 				mysqlQuery := buildMySQLFTSQuery(*search)
-				query = append(query, qm.Where(
-					"MATCH(name) AGAINST(? IN BOOLEAN MODE)",
-					mysqlQuery,
-				))
+				conditions = append(conditions, "MATCH(name) AGAINST(? IN BOOLEAN MODE)")
+				args = append(args, mysqlQuery)
 			} else {
 				ftsQuery := buildFTSQuery(*search)
-				query = append(query, qm.Where(
-					"item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)",
-					ftsQuery,
-				))
+				conditions = append(conditions, "item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)")
+				args = append(args, ftsQuery)
 			}
 		} else {
-			query = append(query, qm.Where("LOWER("+models.ItemColumns.Name+") LIKE LOWER(?)", "%"+*search+"%"))
+			conditions = append(conditions, "LOWER(name) LIKE LOWER(?)")
+			args = append(args, "%"+*search+"%")
 		}
 	}
 
-	count, err := models.Items(query...).Count(ctx, r.db)
-	return int(count), err
+	q := "SELECT COUNT(*) FROM item"
+	if len(conditions) > 0 {
+		q += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	var count int
+	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count items: %w", err)
+	}
+	return count, nil
 }
 
 func (r *Repository) Update(
@@ -263,14 +290,14 @@ func (r *Repository) Update(
 	}
 
 	itemID := domainItem.ID()
-	dbItem := &models.Item{
-		ID:        itemID.String(),
-		Name:      domainItem.Name().String(),
-		Position:  domainItem.Position().Int(),
-		Done:      domainItem.Done(),
-		CreatedAt: domainItem.CreatedAt(),
-	}
-	_, err = dbItem.Update(ctx, tx, boil.Blacklist(models.ItemColumns.CreatedAt))
+	txQ := r.q.WithTx(tx)
+	err = txQ.UpdateItem(
+		ctx,
+		domainItem.Name().String(),
+		int64(domainItem.Position().Int()),
+		domainItem.Done(),
+		itemID.String(),
+	)
 	if err != nil {
 		return nil, err
 	}
