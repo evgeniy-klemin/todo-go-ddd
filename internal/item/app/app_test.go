@@ -100,8 +100,8 @@ func TestCreate_WithExplicitPosition_CallsAdd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if item.Position().Int() != 5 {
-		t.Errorf("expected position 5, got %d", item.Position().Int())
+	if item.Position == nil || *item.Position != 5 {
+		t.Errorf("expected position 5, got %v", item.Position)
 	}
 	if !addCalled {
 		t.Error("Add should be called when position is explicitly provided")
@@ -135,8 +135,8 @@ func TestCreate_WithoutPosition_CallsAddWithNextPosition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if item.Position().Int() != 8 {
-		t.Errorf("expected position 8, got %d", item.Position().Int())
+	if item.Position == nil || *item.Position != 8 {
+		t.Errorf("expected position 8, got %v", item.Position)
 	}
 	if addCalled {
 		t.Error("Add should not be called when position is nil")
@@ -231,7 +231,7 @@ func TestUpdate_SetDoneTrue_CallsComplete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !result.Done() {
+	if result.Done == nil || !*result.Done {
 		t.Error("expected Done to be true after update")
 	}
 }
@@ -256,7 +256,7 @@ func TestUpdate_SetDoneFalse_CallsUncomplete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Done() {
+	if result.Done == nil || *result.Done {
 		t.Error("expected Done to be false after update")
 	}
 }

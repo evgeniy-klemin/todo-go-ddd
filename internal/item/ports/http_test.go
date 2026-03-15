@@ -13,7 +13,6 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/evgeniy-klemin/todo/internal/item/app"
-	"github.com/evgeniy-klemin/todo/internal/item/domain"
 )
 
 func testTime() time.Time {
@@ -23,19 +22,19 @@ func testTime() time.Time {
 // --- mock ItemService ---
 
 type mockService struct {
-	createFn  func(ctx context.Context, name string, position *int) (*domain.Item, error)
-	getByIDFn func(ctx context.Context, id string) (*domain.Item, error)
-	updateFn  func(ctx context.Context, reqItem *app.Item) (*domain.Item, error)
+	createFn  func(ctx context.Context, name string, position *int) (*app.Item, error)
+	getByIDFn func(ctx context.Context, id string) (*app.Item, error)
+	updateFn  func(ctx context.Context, reqItem *app.Item) (*app.Item, error)
 	listFn    func(ctx context.Context, query app.ListQuery) (app.ListResult, error)
 }
 
-func (m *mockService) Create(ctx context.Context, name string, position *int) (*domain.Item, error) {
+func (m *mockService) Create(ctx context.Context, name string, position *int) (*app.Item, error) {
 	return m.createFn(ctx, name, position)
 }
-func (m *mockService) GetItemByID(ctx context.Context, id string) (*domain.Item, error) {
+func (m *mockService) GetItemByID(ctx context.Context, id string) (*app.Item, error) {
 	return m.getByIDFn(ctx, id)
 }
-func (m *mockService) Update(ctx context.Context, reqItem *app.Item) (*domain.Item, error) {
+func (m *mockService) Update(ctx context.Context, reqItem *app.Item) (*app.Item, error) {
 	return m.updateFn(ctx, reqItem)
 }
 func (m *mockService) List(ctx context.Context, query app.ListQuery) (app.ListResult, error) {
@@ -44,6 +43,11 @@ func (m *mockService) List(ctx context.Context, query app.ListQuery) (app.ListRe
 	}
 	return app.ListResult{}, nil
 }
+
+func intPtr(v int) *int       { return &v }
+func boolPtr(v bool) *bool    { return &v }
+func strPtr(v string) *string { return &v }
+func timePtr(v time.Time) *time.Time { return &v }
 
 func newTestServer(svc ItemService) *HttpServer {
 	return NewHttpServer(svc)
@@ -60,10 +64,10 @@ func newEchoContext(method, path, body string) (echo.Context, *httptest.Response
 // --- tests ---
 
 func TestPostItems_Returns201OnSuccess(t *testing.T) {
-	id, _ := domain.NewModelID("00000000-0000-0000-0000-000000000001")
 	svc := &mockService{
-		createFn: func(_ context.Context, name string, position *int) (*domain.Item, error) {
-			return domain.ReconstituteItem(id, name, 1, false, testTime()), nil
+		createFn: func(_ context.Context, name string, position *int) (*app.Item, error) {
+			t := testTime()
+			return &app.Item{ID: "00000000-0000-0000-0000-000000000001", Name: strPtr(name), Position: intPtr(1), Done: boolPtr(false), CreatedAt: timePtr(t)}, nil
 		},
 	}
 
@@ -80,7 +84,7 @@ func TestPostItems_Returns201OnSuccess(t *testing.T) {
 
 func TestPostItems_InvalidName_Returns422(t *testing.T) {
 	svc := &mockService{
-		createFn: func(_ context.Context, name string, position *int) (*domain.Item, error) {
+		createFn: func(_ context.Context, name string, position *int) (*app.Item, error) {
 			return nil, app.Validation("create item", fmt.Errorf("name has wrong size"))
 		},
 	}
@@ -147,10 +151,10 @@ func TestGetItems_Returns200(t *testing.T) {
 }
 
 func TestPatchItemsItemid_DoneTrue_Returns200(t *testing.T) {
-	id, _ := domain.NewModelID("00000000-0000-0000-0000-000000000001")
 	svc := &mockService{
-		updateFn: func(_ context.Context, reqItem *app.Item) (*domain.Item, error) {
-			return domain.ReconstituteItem(id, "Task", 1, true, testTime()), nil
+		updateFn: func(_ context.Context, reqItem *app.Item) (*app.Item, error) {
+			tt := testTime()
+			return &app.Item{ID: "00000000-0000-0000-0000-000000000001", Name: strPtr("Task"), Position: intPtr(1), Done: boolPtr(true), CreatedAt: timePtr(tt)}, nil
 		},
 	}
 
@@ -176,7 +180,7 @@ func TestPatchItemsItemid_DoneTrue_Returns200(t *testing.T) {
 
 func TestGetItemsItemId_NotFound_Returns404(t *testing.T) {
 	svc := &mockService{
-		getByIDFn: func(_ context.Context, _ string) (*domain.Item, error) {
+		getByIDFn: func(_ context.Context, _ string) (*app.Item, error) {
 			return nil, app.NotFound("get item by id", fmt.Errorf("item not found"))
 		},
 	}
