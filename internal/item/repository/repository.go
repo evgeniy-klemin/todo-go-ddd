@@ -12,25 +12,22 @@ import (
 )
 
 type Repository struct {
-	db         *sql.DB
-	q          querier
-	mu         sync.Mutex
-	ftsEnabled bool
+	db *sql.DB
+	q  querier
+	mu sync.Mutex
 }
 
 func NewSQLite(db *sql.DB, ftsEnabled bool) *Repository {
 	return &Repository{
-		db:         db,
-		q:          newSQLiteAdapter(db),
-		ftsEnabled: ftsEnabled,
+		db: db,
+		q:  newSQLiteAdapter(db, ftsEnabled),
 	}
 }
 
 func NewMySQL(db *sql.DB, ftsEnabled bool) *Repository {
 	return &Repository{
-		db:         db,
-		q:          newMySQLAdapter(db),
-		ftsEnabled: ftsEnabled,
+		db: db,
+		q:  newMySQLAdapter(db, ftsEnabled),
 	}
 }
 
@@ -126,21 +123,7 @@ func (r *Repository) List(
 		orderBy = append(orderBy, "position asc")
 	}
 
-	var conditions []string
-	var args []interface{}
-
-	if filter.Done != nil {
-		conditions = append(conditions, "done=?")
-		args = append(args, *filter.Done)
-	}
-
-	if filter.Search != nil && *filter.Search != "" {
-		cond, arg := r.q.SearchCondition(*filter.Search, r.ftsEnabled)
-		conditions = append(conditions, cond)
-		args = append(args, arg)
-	}
-
-	dbRows, err := r.q.ListItems(ctx, conditions, args, strings.Join(orderBy, ", "), perPage, perPage*(page-1))
+	dbRows, err := r.q.ListItems(ctx, listFilter{Done: filter.Done, Search: filter.Search}, strings.Join(orderBy, ", "), perPage, perPage*(page-1))
 	if err != nil {
 		return nil, fmt.Errorf("query items: %w", err)
 	}
@@ -157,21 +140,7 @@ func (r *Repository) List(
 }
 
 func (r *Repository) Count(ctx context.Context, filter domain.ListFilter) (int, error) {
-	var conditions []string
-	var args []interface{}
-
-	if filter.Done != nil {
-		conditions = append(conditions, "done=?")
-		args = append(args, *filter.Done)
-	}
-
-	if filter.Search != nil && *filter.Search != "" {
-		cond, arg := r.q.SearchCondition(*filter.Search, r.ftsEnabled)
-		conditions = append(conditions, cond)
-		args = append(args, arg)
-	}
-
-	count, err := r.q.CountItems(ctx, conditions, args)
+	count, err := r.q.CountItems(ctx, listFilter{Done: filter.Done, Search: filter.Search})
 	if err != nil {
 		return 0, fmt.Errorf("count items: %w", err)
 	}

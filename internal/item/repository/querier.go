@@ -15,6 +15,13 @@ type dbItem struct {
 	CreatedAt time.Time
 }
 
+// listFilter carries the filter parameters for List/Count queries.
+// It mirrors domain.ListFilter but avoids importing domain types into the adapter layer.
+type listFilter struct {
+	Done   *bool
+	Search *string
+}
+
 // querier abstracts over the sqlc-generated query types for both SQLite and MySQL,
 // allowing the repository to stay database-agnostic.
 type querier interface {
@@ -22,14 +29,10 @@ type querier interface {
 	InsertItem(ctx context.Context, id, name string, position int64, done bool, createdAt time.Time) error
 	UpdateItem(ctx context.Context, name string, position int64, done bool, id string) error
 	MaxPosition(ctx context.Context) (int64, error)
-	// SearchCondition returns the SQL WHERE fragment and bind argument for a full-text or
-	// LIKE search. Returns empty strings when ftsEnabled is false and falls back to LIKE.
-	SearchCondition(search string, ftsEnabled bool) (condition string, arg interface{})
-	// ListItems executes a SELECT query with optional WHERE conditions, ORDER BY, LIMIT, OFFSET.
-	ListItems(ctx context.Context, conditions []string, args []interface{}, orderBy string, limit, offset int) ([]dbItem, error)
-	// CountItems executes a COUNT query with optional WHERE conditions.
-	CountItems(ctx context.Context, conditions []string, args []interface{}) (int, error)
+	// ListItems executes a SELECT query applying filter, ORDER BY, LIMIT, OFFSET.
+	ListItems(ctx context.Context, filter listFilter, orderBy string, limit, offset int) ([]dbItem, error)
+	// CountItems executes a COUNT query applying filter.
+	CountItems(ctx context.Context, filter listFilter) (int, error)
 	// WithTx returns a new querier backed by the given transaction.
 	WithTx(tx *sql.Tx) querier
 }
-

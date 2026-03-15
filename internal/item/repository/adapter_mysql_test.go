@@ -28,10 +28,9 @@ func TestBuildMySQLFTSQuery(t *testing.T) {
 }
 
 func TestMySQLAdapterSearchCondition(t *testing.T) {
-	a := &mysqlAdapter{}
-
 	t.Run("FTSMode", func(t *testing.T) {
-		cond, arg := a.SearchCondition("buy", true)
+		a := &mysqlAdapter{ftsEnabled: true}
+		cond, arg := a.searchCondition("buy")
 		wantCond := "MATCH(name) AGAINST(? IN BOOLEAN MODE)"
 		wantArg := "+buy*"
 		if cond != wantCond {
@@ -43,7 +42,8 @@ func TestMySQLAdapterSearchCondition(t *testing.T) {
 	})
 
 	t.Run("LIKEFallback", func(t *testing.T) {
-		cond, arg := a.SearchCondition("buy", false)
+		a := &mysqlAdapter{ftsEnabled: false}
+		cond, arg := a.searchCondition("buy")
 		wantCond := "LOWER(name) LIKE LOWER(?)"
 		wantArg := "%buy%"
 		if cond != wantCond {

@@ -23,10 +23,9 @@ func TestBuildFTSQuery(t *testing.T) {
 }
 
 func TestSQLiteAdapterSearchCondition(t *testing.T) {
-	a := &sqliteAdapter{}
-
 	t.Run("FTSMode", func(t *testing.T) {
-		cond, arg := a.SearchCondition("buy", true)
+		a := &sqliteAdapter{ftsEnabled: true}
+		cond, arg := a.searchCondition("buy")
 		wantCond := "item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)"
 		wantArg := `"buy"*`
 		if cond != wantCond {
@@ -38,7 +37,8 @@ func TestSQLiteAdapterSearchCondition(t *testing.T) {
 	})
 
 	t.Run("LIKEFallback", func(t *testing.T) {
-		cond, arg := a.SearchCondition("buy", false)
+		a := &sqliteAdapter{ftsEnabled: false}
+		cond, arg := a.searchCondition("buy")
 		wantCond := "LOWER(name) LIKE LOWER(?)"
 		wantArg := "%buy%"
 		if cond != wantCond {
