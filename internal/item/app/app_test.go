@@ -17,12 +17,16 @@ func testTime() time.Time {
 // --- mocks ---
 
 type mockDomainRepository struct {
+	getByIDFn             func(ctx context.Context, id domain.ModelID) (*domain.Item, error)
 	addFn                 func(ctx context.Context, item *domain.Item) (*domain.Item, error)
 	addWithNextPositionFn func(ctx context.Context, item *domain.Item) (*domain.Item, error)
 	updateFn              func(ctx context.Context, id domain.ModelID, updater func(*domain.Item) error) (*domain.Item, error)
 }
 
 func (m *mockDomainRepository) GetByID(ctx context.Context, id domain.ModelID) (*domain.Item, error) {
+	if m.getByIDFn != nil {
+		return m.getByIDFn(ctx, id)
+	}
 	return nil, nil
 }
 
@@ -149,8 +153,11 @@ func TestCreate_EmptyName_ReturnsValidationError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error for empty name, got nil")
 	}
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("expected ErrValidation, got: %v", err)
+	}
 	if !errors.Is(err, domain.ErrNameLength) {
-		t.Errorf("expected ErrNameLength, got: %v", err)
+		t.Errorf("expected domain.ErrNameLength in chain, got: %v", err)
 	}
 }
 
@@ -162,8 +169,11 @@ func TestCreate_NameTooLong_ReturnsValidationError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error for long name, got nil")
 	}
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("expected ErrValidation, got: %v", err)
+	}
 	if !errors.Is(err, domain.ErrNameLength) {
-		t.Errorf("expected ErrNameLength, got: %v", err)
+		t.Errorf("expected domain.ErrNameLength in chain, got: %v", err)
 	}
 }
 
@@ -319,5 +329,48 @@ func TestUpdate_InvalidID_ReturnsError(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for invalid ID, got nil")
+	}
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("expected ErrValidation, got: %v", err)
+	}
+}
+
+func TestGetItemByID_NotFound_ReturnsErrNotFound(t *testing.T) {
+	domainRepo := &mockDomainRepository{
+		getByIDFn: func(_ context.Context, _ domain.ModelID) (*domain.Item, error) {
+			return nil, domain.ErrNotFound
+		},
+	}
+
+	svc := newService(domainRepo, &mockQueryRepository{})
+	_, err := svc.GetItemByID(context.Background(), "00000000-0000-0000-0000-000000000001")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got: %v", err)
+	}
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("expected domain.ErrNotFound in chain, got: %v", err)
+	}
+}
+
+func TestUpdate_NotFound_ReturnsErrNotFound(t *testing.T) {
+	domainRepo := &mockDomainRepository{
+		updateFn: func(_ context.Context, _ domain.ModelID, _ func(*domain.Item) error) (*domain.Item, error) {
+			return nil, domain.ErrNotFound
+		},
+	}
+
+	svc := newService(domainRepo, &mockQueryRepository{})
+	_, err := svc.Update(context.Background(), &Item{
+		ID:   "00000000-0000-0000-0000-000000000001",
+		Done: boolPtr(true),
+	})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got: %v", err)
 	}
 }

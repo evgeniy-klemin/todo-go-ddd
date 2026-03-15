@@ -3,6 +3,7 @@ package ports
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -80,7 +81,7 @@ func TestPostItems_Returns201OnSuccess(t *testing.T) {
 func TestPostItems_InvalidName_Returns422(t *testing.T) {
 	svc := &mockService{
 		createFn: func(_ context.Context, name string, position *int) (*domain.Item, error) {
-			return nil, domain.ErrNameLength
+			return nil, app.Validation("create item", fmt.Errorf("name has wrong size"))
 		},
 	}
 
@@ -176,7 +177,7 @@ func TestPatchItemsItemid_DoneTrue_Returns200(t *testing.T) {
 func TestGetItemsItemId_NotFound_Returns404(t *testing.T) {
 	svc := &mockService{
 		getByIDFn: func(_ context.Context, _ string) (*domain.Item, error) {
-			return nil, domain.ErrNotFound
+			return nil, app.NotFound("get item by id", fmt.Errorf("item not found"))
 		},
 	}
 

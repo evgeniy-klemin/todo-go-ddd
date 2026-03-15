@@ -14,6 +14,12 @@ import (
 	"github.com/evgeniy-klemin/todo/internal/item/domain"
 )
 
+// errorStatusMap maps app error kinds to HTTP status codes.
+var errorStatusMap = map[error]int{
+	app.ErrNotFound:   http.StatusNotFound,
+	app.ErrValidation: http.StatusUnprocessableEntity,
+}
+
 // ItemService defines the port that the HTTP handler requires from the application layer.
 type ItemService interface {
 	Create(ctx context.Context, name string, position *int) (*domain.Item, error)
@@ -23,14 +29,13 @@ type ItemService interface {
 }
 
 func httpError(ctx echo.Context, err error) error {
-	switch {
-	case errors.Is(err, domain.ErrNotFound):
-		return ctx.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
-	case errors.Is(err, domain.ErrNameLength), errors.Is(err, domain.ErrPositionValue):
-		return ctx.JSON(http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
-	default:
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+	var appErr *app.AppError
+	if errors.As(err, &appErr) {
+		if status, ok := errorStatusMap[appErr.Kind]; ok {
+			return ctx.JSON(status, map[string]string{"error": appErr.UserMessage})
+		}
 	}
+	return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 }
 
 type HttpServer struct {
