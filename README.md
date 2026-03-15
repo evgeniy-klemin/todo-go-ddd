@@ -4,7 +4,7 @@ A todo API built with Go using Domain-Driven Design (DDD) architecture. Supports
 
 ## Prerequisites
 
-- Go 1.17+
+- Go 1.25+
 - Docker & Docker Compose (for MySQL)
 - `go get github.com/deepmap/oapi-codegen/pkg/codegen@v1.8.2` — OpenAPI codegen
 - `go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest` — sqlc query codegen
@@ -50,7 +50,7 @@ Default DSN per driver:
 
 This project uses two codegen tools:
 
-- **OpenAPI**: `go generate ./...` regenerates HTTP handlers from `docs/openapi.yaml`
+- **OpenAPI**: `go generate ./...` regenerates HTTP handlers from `docs/todo.yaml`
 - **sqlc**: `sqlc generate` regenerates type-safe query code from SQL files in `db/queries/`
 
 Run `make generate` to invoke both.
@@ -60,7 +60,17 @@ After modifying any file under `db/queries/`, run `sqlc generate` to keep the ge
 ## Run
 
 - `go run cmd/todoserver/todoserver.go` — run server (use `-port` flag to override port)
-- `go run cmd/todoclient/todoclient.go` — run client (concurrent 10000 REST queries)
+- `go run cmd/todoclient/todoclient.go` — run client (concurrent 10000 REST queries, uses port 8080)
+
+## Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend dev server starts at http://localhost:5173 and proxies API requests to the backend.
 
 ## Project Structure
 
