@@ -71,7 +71,7 @@ func (s *ItemService) List(ctx context.Context, query ListQuery) (ListResult, er
 		Done:   query.Done,
 		Search: query.Search,
 	}
-	sortFields := toSortFields(query.SortFields)
+	sortFields := appSortFieldsToDomain(query.SortFields)
 
 	count, err := s.repo.Count(ctx, filter)
 	if err != nil {

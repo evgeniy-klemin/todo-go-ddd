@@ -57,7 +57,7 @@ type ListResult struct {
 	TotalCount int
 }
 
-func toSortFields(sf SortFields) []domain.SortField {
+func appSortFieldsToDomain(sf SortFields) []domain.SortField {
 	res := make([]domain.SortField, len(sf))
 	for i, f := range sf {
 		var field string
