@@ -2,3 +2,4 @@
 todoserver
 todotest.db
 frontend/test-results/
+.bin/
