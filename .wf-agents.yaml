@@ -1,0 +1,37 @@
+# wf-agents per-project configuration
+# https://github.com/evgeniy-klemin/wf-agents
+#
+# wf-agents — event-sourced state-machine engine for autonomous Claude Code
+# sessions. It intercepts Claude Code actions via hooks, enforces phase-based
+# rules, coordinates a team of agents (Team Lead, Developer, Reviewer), and
+# provides a real-time web dashboard, all backed by Temporal workflows.
+#
+# This file is a per-project override: `tracking` maps check names to shell
+# commands for detection, `teammate_idle` enforces which checks must pass
+# before a teammate can go idle in a given workflow phase.
+
+tracking:
+  lint:
+    - "make lint"
+  test:
+    - "make test"
+    - "go test"
+  test-e2e:
+    - "make test-e2e"
+    - "npx playwright test"
+
+teammate_idle:
+  - match: DEVELOPING
+    checks:
+      - type: command_ran
+        key: lint
+        message: "Developer must run lint before going idle — run 'make lint'."
+      - type: command_ran
+        key: test
+        message: "Developer must run test before going idle — run 'make test' or equivalent."
+      - type: command_ran
+        key: test-e2e
+        message: "Developer must run test-e2e before going idle — run 'make test-e2e' or equivalent."
+
+  - match: REVIEWING
+    checks: []
