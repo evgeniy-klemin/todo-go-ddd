@@ -9,11 +9,7 @@ import (
 
 // ErrBadParams defines model for ErrBadParams.
 type ErrBadParams struct {
-	Fields *[]struct {
-		Field   *string `json:"field,omitempty"`
-		Message *string `json:"message,omitempty"`
-	} `json:"fields,omitempty"`
-	Message *string `json:"message,omitempty"`
+	Error string `json:"error"`
 }
 
 // ItemPatch defines model for ItemPatch.
