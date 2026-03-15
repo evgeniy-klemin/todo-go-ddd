@@ -2,6 +2,8 @@ package app
 
 import (
 	"time"
+
+	"github.com/evgeniy-klemin/todo/internal/item/domain"
 )
 
 type ItemField int
@@ -53,4 +55,27 @@ type ListQuery struct {
 type ListResult struct {
 	Items      []Item
 	TotalCount int
+}
+
+func toSortFields(sf SortFields) []domain.SortField {
+	res := make([]domain.SortField, len(sf))
+	for i, f := range sf {
+		var field string
+		switch f.Field {
+		case ItemFieldName:
+			field = "name"
+		case ItemFieldPosition:
+			field = "position"
+		case ItemFieldDone:
+			field = "done"
+		case ItemFieldCreatedAt:
+			field = "created_at"
+		}
+		dir := domain.SortAsc
+		if f.SortDirection == SortDirectionDesc {
+			dir = domain.SortDesc
+		}
+		res[i] = domain.SortField{Field: field, Direction: dir}
+	}
+	return res
 }

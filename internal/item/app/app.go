@@ -9,14 +9,12 @@ import (
 )
 
 type ItemService struct {
-	domainRepository domain.Repository
-	queryRepository  QueryRepository
+	repo domain.Repository
 }
 
-func NewItemService(domainRepository domain.Repository, queryRepository QueryRepository) *ItemService {
+func NewItemService(repo domain.Repository) *ItemService {
 	return &ItemService{
-		domainRepository: domainRepository,
-		queryRepository:  queryRepository,
+		repo: repo,
 	}
 }
 
@@ -25,14 +23,14 @@ func (s *ItemService) GetItemByID(ctx context.Context, id string) (*Item, error)
 	if err != nil {
 		return nil, Validation("get item by id", err)
 	}
-	item, err := s.domainRepository.GetByID(ctx, modelID)
+	item, err := s.repo.GetByID(ctx, modelID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, NotFound("get item by id", err)
 		}
 		return nil, err
 	}
-	return domainToAppItem(item), nil
+	return domainToAppItem(item, nil), nil
 }
 
 func (s *ItemService) Create(ctx context.Context, name string, position *int) (*Item, error) {
@@ -42,14 +40,14 @@ func (s *ItemService) Create(ctx context.Context, name string, position *int) (*
 			slog.WarnContext(ctx, "NewItem validation failed", "name", name, "position", *position, "error", err)
 			return nil, Validation("create item", err)
 		}
-		result, err := s.domainRepository.Add(ctx, item)
+		result, err := s.repo.Add(ctx, item)
 		if err != nil {
-			slog.ErrorContext(ctx, "domainRepository.Add failed", "error", err)
+			slog.ErrorContext(ctx, "repo.Add failed", "error", err)
 			return nil, err
 		}
 		resultID := result.ID()
 		slog.InfoContext(ctx, "item created", "id", resultID.String(), "position", result.Position().Int())
-		return domainToAppItem(result), nil
+		return domainToAppItem(result, nil), nil
 	}
 
 	// Auto-position: create with placeholder, repo will assign real position atomically
@@ -58,24 +56,35 @@ func (s *ItemService) Create(ctx context.Context, name string, position *int) (*
 		slog.WarnContext(ctx, "NewItem validation failed", "name", name, "error", err)
 		return nil, Validation("create item", err)
 	}
-	result, err := s.domainRepository.AddWithNextPosition(ctx, item)
+	result, err := s.repo.AddWithNextPosition(ctx, item)
 	if err != nil {
-		slog.ErrorContext(ctx, "domainRepository.AddWithNextPosition failed", "error", err)
+		slog.ErrorContext(ctx, "repo.AddWithNextPosition failed", "error", err)
 		return nil, err
 	}
 	resultID := result.ID()
 	slog.InfoContext(ctx, "item created", "id", resultID.String(), "position", result.Position().Int())
-	return domainToAppItem(result), nil
+	return domainToAppItem(result, nil), nil
 }
 
 func (s *ItemService) List(ctx context.Context, query ListQuery) (ListResult, error) {
-	count, err := s.queryRepository.Count(ctx, query.Done, query.Search)
+	filter := domain.ListFilter{
+		Done:   query.Done,
+		Search: query.Search,
+	}
+	sortFields := toSortFields(query.SortFields)
+
+	count, err := s.repo.Count(ctx, filter)
 	if err != nil {
 		return ListResult{}, err
 	}
-	items, err := s.queryRepository.All(ctx, query.Done, query.Search, query.Fields, query.Page, query.PerPage, query.SortFields)
+	domainItems, err := s.repo.List(ctx, filter, sortFields, query.Page, query.PerPage)
 	if err != nil {
 		return ListResult{}, err
+	}
+
+	items := make([]Item, 0, len(domainItems))
+	for _, d := range domainItems {
+		items = append(items, *domainToAppItem(d, query.Fields))
 	}
 	return ListResult{Items: items, TotalCount: count}, nil
 }
@@ -85,7 +94,7 @@ func (s *ItemService) Update(ctx context.Context, reqItem *Item) (*Item, error) 
 	if err != nil {
 		return nil, Validation("update item", err)
 	}
-	result, err := s.domainRepository.Update(ctx, modelID, func(item *domain.Item) error {
+	result, err := s.repo.Update(ctx, modelID, func(item *domain.Item) error {
 		if reqItem.Done != nil {
 			if *reqItem.Done {
 				item.Complete()
@@ -111,5 +120,5 @@ func (s *ItemService) Update(ctx context.Context, reqItem *Item) (*Item, error) 
 		}
 		return nil, err
 	}
-	return domainToAppItem(result), nil
+	return domainToAppItem(result, nil), nil
 }

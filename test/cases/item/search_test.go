@@ -36,7 +36,7 @@ func (s *SearchSuite) TestExactWordMatch() {
 	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	search := "buy"
-	items, err := repo.All(context.Background(), nil, &search, nil, 1, 20, nil)
+	items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
 	s.Require().NoError(err)
 	s.Equal(2, len(items), "expected 2 items matching 'buy'")
 }
@@ -46,7 +46,7 @@ func (s *SearchSuite) TestPrefixMatch() {
 	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	search := "buy"
-	items, err := repo.All(context.Background(), nil, &search, nil, 1, 20, nil)
+	items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
 	s.Require().NoError(err)
 	s.Equal(2, len(items), "expected 2 items matching prefix 'buy'")
 }
@@ -56,7 +56,7 @@ func (s *SearchSuite) TestCaseInsensitive() {
 	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	search := "buy"
-	items, err := repo.All(context.Background(), nil, &search, nil, 1, 20, nil)
+	items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
 	s.Require().NoError(err)
 	s.Equal(1, len(items))
 }
@@ -66,7 +66,7 @@ func (s *SearchSuite) TestMultipleWords() {
 	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	search := "buy milk"
-	items, err := repo.All(context.Background(), nil, &search, nil, 1, 20, nil)
+	items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
 	s.Require().NoError(err)
 	s.Equal(1, len(items), "expected 1 item matching both 'buy' AND 'milk'")
 }
@@ -76,7 +76,7 @@ func (s *SearchSuite) TestNoResults() {
 	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	search := "xyz"
-	items, err := repo.All(context.Background(), nil, &search, nil, 1, 20, nil)
+	items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
 	s.Require().NoError(err)
 	s.Equal(0, len(items))
 }
@@ -85,7 +85,7 @@ func (s *SearchSuite) TestNilSearchReturnsAll() {
 	s.insertItems("Task 1", "Task 2", "Task 3")
 	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
-	items, err := repo.All(context.Background(), nil, nil, nil, 1, 20, nil)
+	items, err := repo.List(context.Background(), domain.ListFilter{}, nil, 1, 20)
 	s.Require().NoError(err)
 	s.Equal(3, len(items))
 }
@@ -99,12 +99,12 @@ func (s *SearchSuite) TestSearchWithPagination() {
 
 	search := "task"
 	// Page 1
-	items, err := repo.All(context.Background(), nil, &search, nil, 1, 2, nil)
+	items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 2)
 	s.Require().NoError(err)
 	s.Equal(2, len(items))
 
 	// Page 3 — 1 remaining
-	items, err = repo.All(context.Background(), nil, &search, nil, 3, 2, nil)
+	items, err = repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 3, 2)
 	s.Require().NoError(err)
 	s.Equal(1, len(items))
 }
@@ -114,7 +114,7 @@ func (s *SearchSuite) TestCountWithSearch() {
 	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	search := "buy"
-	count, err := repo.Count(context.Background(), nil, &search)
+	count, err := repo.Count(context.Background(), domain.ListFilter{Search: &search})
 	s.Require().NoError(err)
 	s.Equal(2, count)
 }
