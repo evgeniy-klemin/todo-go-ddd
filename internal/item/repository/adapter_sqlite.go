@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/evgeniy-klemin/todo/internal/item/repository/sqlitedb"
@@ -55,4 +56,22 @@ func (a *sqliteAdapter) MaxPosition(ctx context.Context) (int64, error) {
 
 func (a *sqliteAdapter) WithTx(tx *sql.Tx) querier {
 	return &sqliteAdapter{q: a.q.WithTx(tx)}
+}
+
+func (a *sqliteAdapter) SearchCondition(search string, ftsEnabled bool) (string, interface{}) {
+	if ftsEnabled {
+		return "item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)", buildFTSQuery(search)
+	}
+	return "LOWER(name) LIKE LOWER(?)", "%" + search + "%"
+}
+
+// buildFTSQuery converts a user search string into an FTS5 query with prefix matching.
+// Example: "buy milk" -> "\"buy\"* \"milk\"*" (each word gets prefix matching)
+func buildFTSQuery(search string) string {
+	words := strings.Fields(search)
+	for i, word := range words {
+		word = strings.ReplaceAll(word, "\"", "\"\"")
+		words[i] = "\"" + word + "\"" + "*"
+	}
+	return strings.Join(words, " ")
 }
