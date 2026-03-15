@@ -63,7 +63,7 @@ func (a *sqliteAdapter) WithTx(tx *sql.Tx) querier {
 
 func (a *sqliteAdapter) ListItems(ctx context.Context, filter listFilter, sort []sortField, limit, offset int) ([]dbItem, error) {
 	var conditions []string
-	var args []interface{}
+	var args []any
 
 	if filter.Done != nil {
 		conditions = append(conditions, "done=?")
@@ -81,7 +81,7 @@ func (a *sqliteAdapter) ListItems(ctx context.Context, filter listFilter, sort [
 	}
 	q += " ORDER BY " + buildOrderBy(sort)
 	q += " LIMIT ? OFFSET ?"
-	queryArgs := make([]interface{}, len(args), len(args)+2)
+	queryArgs := make([]any, len(args), len(args)+2)
 	copy(queryArgs, args)
 	queryArgs = append(queryArgs, limit, offset)
 
@@ -107,7 +107,7 @@ func (a *sqliteAdapter) ListItems(ctx context.Context, filter listFilter, sort [
 
 func (a *sqliteAdapter) CountItems(ctx context.Context, filter listFilter) (int, error) {
 	var conditions []string
-	var args []interface{}
+	var args []any
 
 	if filter.Done != nil {
 		conditions = append(conditions, "done=?")
@@ -130,7 +130,7 @@ func (a *sqliteAdapter) CountItems(ctx context.Context, filter listFilter) (int,
 	return count, nil
 }
 
-func (a *sqliteAdapter) searchCondition(search string) (string, interface{}) {
+func (a *sqliteAdapter) searchCondition(search string) (string, any) {
 	if a.ftsEnabled {
 		return "item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)", buildFTSQuery(search)
 	}
