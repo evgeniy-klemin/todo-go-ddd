@@ -22,6 +22,9 @@ type querier interface {
 	InsertItem(ctx context.Context, id, name string, position int64, done bool, createdAt time.Time) error
 	UpdateItem(ctx context.Context, name string, position int64, done bool, id string) error
 	MaxPosition(ctx context.Context) (int64, error)
+	// SearchCondition returns the SQL WHERE fragment and bind argument for a full-text or
+	// LIKE search. Returns empty strings when ftsEnabled is false and falls back to LIKE.
+	SearchCondition(search string, ftsEnabled bool) (condition string, arg interface{})
 	// WithTx returns a new querier backed by the given transaction.
 	WithTx(tx *sql.Tx) querier
 }

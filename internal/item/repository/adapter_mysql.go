@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/evgeniy-klemin/todo/internal/item/repository/mysqldb"
@@ -63,4 +64,29 @@ func (a *mysqlAdapter) MaxPosition(ctx context.Context) (int64, error) {
 
 func (a *mysqlAdapter) WithTx(tx *sql.Tx) querier {
 	return &mysqlAdapter{q: a.q.WithTx(tx)}
+}
+
+func (a *mysqlAdapter) SearchCondition(search string, ftsEnabled bool) (string, interface{}) {
+	if ftsEnabled {
+		return "MATCH(name) AGAINST(? IN BOOLEAN MODE)", buildMySQLFTSQuery(search)
+	}
+	return "LOWER(name) LIKE LOWER(?)", "%" + search + "%"
+}
+
+// buildMySQLFTSQuery converts a user search string into a MySQL FULLTEXT boolean mode query
+// with prefix matching and AND logic.
+// Example: "buy milk" -> "+buy* +milk*"
+func buildMySQLFTSQuery(search string) string {
+	words := strings.Fields(search)
+	sanitized := make([]string, 0, len(words))
+	for _, word := range words {
+		word = strings.ReplaceAll(word, "+", "")
+		word = strings.ReplaceAll(word, "-", "")
+		word = strings.ReplaceAll(word, "*", "")
+		if word == "" {
+			continue
+		}
+		sanitized = append(sanitized, "+"+word+"*")
+	}
+	return strings.Join(sanitized, " ")
 }

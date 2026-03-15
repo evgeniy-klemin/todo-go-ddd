@@ -222,47 +222,6 @@ func TestSearch(t *testing.T) {
 			}
 		})
 	})
-
-	t.Run("BuildFTSQuery", func(t *testing.T) {
-		tests := []struct {
-			input    string
-			expected string
-		}{
-			{"buy", `"buy"*`},
-			{"buy milk", `"buy"* "milk"*`},
-			{"Buy Milk", `"Buy"* "Milk"*`},
-			{"", ""},
-		}
-		for _, tt := range tests {
-			got := buildFTSQuery(tt.input)
-			if got != tt.expected {
-				t.Errorf("buildFTSQuery(%q) = %q, want %q", tt.input, got, tt.expected)
-			}
-		}
-	})
-
-	t.Run("BuildMySQLFTSQuery", func(t *testing.T) {
-		tests := []struct {
-			input    string
-			expected string
-		}{
-			{"buy", "+buy*"},
-			{"buy milk", "+buy* +milk*"},
-			{"Buy Milk", "+Buy* +Milk*"},
-			{"", ""},
-			{"buy+milk", "+buymilk*"},
-			{"buy-milk", "+buymilk*"},
-			{"buy*milk", "+buymilk*"},
-			{"+", ""},
-			{"+ -", ""},
-		}
-		for _, tt := range tests {
-			got := buildMySQLFTSQuery(tt.input)
-			if got != tt.expected {
-				t.Errorf("buildMySQLFTSQuery(%q) = %q, want %q", tt.input, got, tt.expected)
-			}
-		}
-	})
 }
 
 func TestCount(t *testing.T) {

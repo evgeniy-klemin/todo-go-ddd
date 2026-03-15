@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/evgeniy-klemin/todo/db/driver"
 	"github.com/evgeniy-klemin/todo/internal/item/domain"
 )
 
@@ -16,7 +15,6 @@ type Repository struct {
 	db         *sql.DB
 	q          querier
 	mu         sync.Mutex
-	driver     string
 	ftsEnabled bool
 }
 
@@ -24,7 +22,6 @@ func NewSQLite(db *sql.DB, ftsEnabled bool) *Repository {
 	return &Repository{
 		db:         db,
 		q:          newSQLiteAdapter(db),
-		driver:     driver.SQLite,
 		ftsEnabled: ftsEnabled,
 	}
 }
@@ -33,7 +30,6 @@ func NewMySQL(db *sql.DB, ftsEnabled bool) *Repository {
 	return &Repository{
 		db:         db,
 		q:          newMySQLAdapter(db),
-		driver:     driver.MySQL,
 		ftsEnabled: ftsEnabled,
 	}
 }
@@ -139,20 +135,9 @@ func (r *Repository) List(
 	}
 
 	if filter.Search != nil && *filter.Search != "" {
-		if r.ftsEnabled {
-			if r.driver == driver.MySQL {
-				mysqlQuery := buildMySQLFTSQuery(*filter.Search)
-				conditions = append(conditions, "MATCH(name) AGAINST(? IN BOOLEAN MODE)")
-				args = append(args, mysqlQuery)
-			} else {
-				ftsQuery := buildFTSQuery(*filter.Search)
-				conditions = append(conditions, "item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)")
-				args = append(args, ftsQuery)
-			}
-		} else {
-			conditions = append(conditions, "LOWER(name) LIKE LOWER(?)")
-			args = append(args, "%"+*filter.Search+"%")
-		}
+		cond, arg := r.q.SearchCondition(*filter.Search, r.ftsEnabled)
+		conditions = append(conditions, cond)
+		args = append(args, arg)
 	}
 
 	q := "SELECT id, name, position, done, created_at FROM item"
@@ -197,20 +182,9 @@ func (r *Repository) Count(ctx context.Context, filter domain.ListFilter) (int, 
 	}
 
 	if filter.Search != nil && *filter.Search != "" {
-		if r.ftsEnabled {
-			if r.driver == driver.MySQL {
-				mysqlQuery := buildMySQLFTSQuery(*filter.Search)
-				conditions = append(conditions, "MATCH(name) AGAINST(? IN BOOLEAN MODE)")
-				args = append(args, mysqlQuery)
-			} else {
-				ftsQuery := buildFTSQuery(*filter.Search)
-				conditions = append(conditions, "item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)")
-				args = append(args, ftsQuery)
-			}
-		} else {
-			conditions = append(conditions, "LOWER(name) LIKE LOWER(?)")
-			args = append(args, "%"+*filter.Search+"%")
-		}
+		cond, arg := r.q.SearchCondition(*filter.Search, r.ftsEnabled)
+		conditions = append(conditions, cond)
+		args = append(args, arg)
 	}
 
 	q := "SELECT COUNT(*) FROM item"
@@ -266,31 +240,3 @@ func (r *Repository) Update(
 	return domainItem, nil
 }
 
-// buildFTSQuery converts a user search string into an FTS5 query with prefix matching.
-// Example: "buy milk" -> "\"buy\"* \"milk\"*" (each word gets prefix matching)
-func buildFTSQuery(search string) string {
-	words := strings.Fields(search)
-	for i, word := range words {
-		word = strings.ReplaceAll(word, "\"", "\"\"")
-		words[i] = "\"" + word + "\"" + "*"
-	}
-	return strings.Join(words, " ")
-}
-
-// buildMySQLFTSQuery converts a user search string into a MySQL FULLTEXT boolean mode query
-// with prefix matching and AND logic.
-// Example: "buy milk" -> "+buy* +milk*"
-func buildMySQLFTSQuery(search string) string {
-	words := strings.Fields(search)
-	sanitized := make([]string, 0, len(words))
-	for _, word := range words {
-		word = strings.ReplaceAll(word, "+", "")
-		word = strings.ReplaceAll(word, "-", "")
-		word = strings.ReplaceAll(word, "*", "")
-		if word == "" {
-			continue
-		}
-		sanitized = append(sanitized, "+"+word+"*")
-	}
-	return strings.Join(sanitized, " ")
-}
