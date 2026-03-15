@@ -99,7 +99,10 @@ func (a *sqliteAdapter) ListItems(ctx context.Context, filter listFilter, orderB
 		}
 		result = append(result, item)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list items: %w", err)
+	}
+	return result, nil
 }
 
 func (a *sqliteAdapter) CountItems(ctx context.Context, filter listFilter) (int, error) {

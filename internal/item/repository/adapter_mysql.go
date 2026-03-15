@@ -106,7 +106,10 @@ func (a *mysqlAdapter) ListItems(ctx context.Context, filter listFilter, orderBy
 		}
 		result = append(result, item)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list items: %w", err)
+	}
+	return result, nil
 }
 
 func (a *mysqlAdapter) CountItems(ctx context.Context, filter listFilter) (int, error) {
