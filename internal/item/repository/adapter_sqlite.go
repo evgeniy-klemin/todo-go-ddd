@@ -10,11 +10,12 @@ import (
 )
 
 type sqliteAdapter struct {
-	q *sqlitedb.Queries
+	q  *sqlitedb.Queries
+	db sqlitedb.DBTX
 }
 
 func newSQLiteAdapter(db *sql.DB) *sqliteAdapter {
-	return &sqliteAdapter{q: sqlitedb.New(db)}
+	return &sqliteAdapter{q: sqlitedb.New(db), db: db}
 }
 
 func (a *sqliteAdapter) GetItemByID(ctx context.Context, id string) (dbItem, error) {
@@ -55,7 +56,47 @@ func (a *sqliteAdapter) MaxPosition(ctx context.Context) (int64, error) {
 }
 
 func (a *sqliteAdapter) WithTx(tx *sql.Tx) querier {
-	return &sqliteAdapter{q: a.q.WithTx(tx)}
+	return &sqliteAdapter{q: a.q.WithTx(tx), db: tx}
+}
+
+func (a *sqliteAdapter) ListItems(ctx context.Context, conditions []string, args []interface{}, orderBy string, limit, offset int) ([]dbItem, error) {
+	q := "SELECT id, name, position, done, created_at FROM item"
+	if len(conditions) > 0 {
+		q += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	q += " ORDER BY " + orderBy
+	q += " LIMIT ? OFFSET ?"
+	queryArgs := make([]interface{}, len(args), len(args)+2)
+	copy(queryArgs, args)
+	queryArgs = append(queryArgs, limit, offset)
+
+	rows, err := a.db.QueryContext(ctx, q, queryArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var result []dbItem
+	for rows.Next() {
+		var item dbItem
+		if err := rows.Scan(&item.ID, &item.Name, &item.Position, &item.Done, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	return result, rows.Err()
+}
+
+func (a *sqliteAdapter) CountItems(ctx context.Context, conditions []string, args []interface{}) (int, error) {
+	q := "SELECT COUNT(*) FROM item"
+	if len(conditions) > 0 {
+		q += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	var count int
+	if err := a.db.QueryRowContext(ctx, q, args...).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 func (a *sqliteAdapter) SearchCondition(search string, ftsEnabled bool) (string, interface{}) {

@@ -140,34 +140,18 @@ func (r *Repository) List(
 		args = append(args, arg)
 	}
 
-	q := "SELECT id, name, position, done, created_at FROM item"
-	if len(conditions) > 0 {
-		q += " WHERE " + strings.Join(conditions, " AND ")
-	}
-	q += " ORDER BY " + strings.Join(orderBy, ", ")
-	q += " LIMIT ? OFFSET ?"
-	args = append(args, perPage, perPage*(page-1))
-
-	rows, err := r.db.QueryContext(ctx, q, args...)
+	dbRows, err := r.q.ListItems(ctx, conditions, args, strings.Join(orderBy, ", "), perPage, perPage*(page-1))
 	if err != nil {
 		return nil, fmt.Errorf("query items: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
 
-	res := make([]*domain.Item, 0)
-	for rows.Next() {
-		var dbRow dbItem
-		if err := rows.Scan(&dbRow.ID, &dbRow.Name, &dbRow.Position, &dbRow.Done, &dbRow.CreatedAt); err != nil {
-			return nil, fmt.Errorf("scan item: %w", err)
-		}
+	res := make([]*domain.Item, 0, len(dbRows))
+	for _, dbRow := range dbRows {
 		domainItem, err := toDomainItem(dbRow)
 		if err != nil {
 			return nil, fmt.Errorf("convert item: %w", err)
 		}
 		res = append(res, domainItem)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate items: %w", err)
 	}
 	return res, nil
 }
@@ -187,13 +171,8 @@ func (r *Repository) Count(ctx context.Context, filter domain.ListFilter) (int, 
 		args = append(args, arg)
 	}
 
-	q := "SELECT COUNT(*) FROM item"
-	if len(conditions) > 0 {
-		q += " WHERE " + strings.Join(conditions, " AND ")
-	}
-
-	var count int
-	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&count); err != nil {
+	count, err := r.q.CountItems(ctx, conditions, args)
+	if err != nil {
 		return 0, fmt.Errorf("count items: %w", err)
 	}
 	return count, nil

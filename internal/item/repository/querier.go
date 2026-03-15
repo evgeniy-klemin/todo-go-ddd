@@ -25,6 +25,10 @@ type querier interface {
 	// SearchCondition returns the SQL WHERE fragment and bind argument for a full-text or
 	// LIKE search. Returns empty strings when ftsEnabled is false and falls back to LIKE.
 	SearchCondition(search string, ftsEnabled bool) (condition string, arg interface{})
+	// ListItems executes a SELECT query with optional WHERE conditions, ORDER BY, LIMIT, OFFSET.
+	ListItems(ctx context.Context, conditions []string, args []interface{}, orderBy string, limit, offset int) ([]dbItem, error)
+	// CountItems executes a COUNT query with optional WHERE conditions.
+	CountItems(ctx context.Context, conditions []string, args []interface{}) (int, error)
 	// WithTx returns a new querier backed by the given transaction.
 	WithTx(tx *sql.Tx) querier
 }
