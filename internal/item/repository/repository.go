@@ -5,32 +5,28 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/evgeniy-klemin/todo/internal/item/domain"
 )
 
 type Repository struct {
-	db         *sql.DB
-	q          querier
-	mu         sync.Mutex
-	ftsEnabled bool
+	db *sql.DB
+	q  querier
+	mu sync.Mutex
 }
 
 func NewSQLite(db *sql.DB, ftsEnabled bool) *Repository {
 	return &Repository{
-		db:         db,
-		q:          newSQLiteAdapter(db),
-		ftsEnabled: ftsEnabled,
+		db: db,
+		q:  newSQLiteAdapter(db, ftsEnabled),
 	}
 }
 
 func NewMySQL(db *sql.DB, ftsEnabled bool) *Repository {
 	return &Repository{
-		db:         db,
-		q:          newMySQLAdapter(db),
-		ftsEnabled: ftsEnabled,
+		db: db,
+		q:  newMySQLAdapter(db, ftsEnabled),
 	}
 }
 
@@ -112,88 +108,30 @@ func (r *Repository) List(
 	sort []domain.SortField,
 	page, perPage int,
 ) ([]*domain.Item, error) {
-	var orderBy []string
-	for _, s := range sort {
-		col := s.Field
-		if s.Direction == domain.SortDesc {
-			col += " desc"
-		} else {
-			col += " asc"
-		}
-		orderBy = append(orderBy, col)
-	}
-	if len(orderBy) == 0 {
-		orderBy = append(orderBy, "position asc")
+	dbSort := make([]sortField, len(sort))
+	for i, s := range sort {
+		dbSort[i] = sortField{Field: s.Field, Desc: s.Direction == domain.SortDesc}
 	}
 
-	var conditions []string
-	var args []interface{}
-
-	if filter.Done != nil {
-		conditions = append(conditions, "done=?")
-		args = append(args, *filter.Done)
-	}
-
-	if filter.Search != nil && *filter.Search != "" {
-		cond, arg := r.q.SearchCondition(*filter.Search, r.ftsEnabled)
-		conditions = append(conditions, cond)
-		args = append(args, arg)
-	}
-
-	q := "SELECT id, name, position, done, created_at FROM item"
-	if len(conditions) > 0 {
-		q += " WHERE " + strings.Join(conditions, " AND ")
-	}
-	q += " ORDER BY " + strings.Join(orderBy, ", ")
-	q += " LIMIT ? OFFSET ?"
-	args = append(args, perPage, perPage*(page-1))
-
-	rows, err := r.db.QueryContext(ctx, q, args...)
+	dbRows, err := r.q.ListItems(ctx, listFilter{Done: filter.Done, Search: filter.Search}, dbSort, perPage, perPage*(page-1))
 	if err != nil {
 		return nil, fmt.Errorf("query items: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
 
-	res := make([]*domain.Item, 0)
-	for rows.Next() {
-		var dbRow dbItem
-		if err := rows.Scan(&dbRow.ID, &dbRow.Name, &dbRow.Position, &dbRow.Done, &dbRow.CreatedAt); err != nil {
-			return nil, fmt.Errorf("scan item: %w", err)
-		}
+	res := make([]*domain.Item, 0, len(dbRows))
+	for _, dbRow := range dbRows {
 		domainItem, err := toDomainItem(dbRow)
 		if err != nil {
 			return nil, fmt.Errorf("convert item: %w", err)
 		}
 		res = append(res, domainItem)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate items: %w", err)
-	}
 	return res, nil
 }
 
 func (r *Repository) Count(ctx context.Context, filter domain.ListFilter) (int, error) {
-	var conditions []string
-	var args []interface{}
-
-	if filter.Done != nil {
-		conditions = append(conditions, "done=?")
-		args = append(args, *filter.Done)
-	}
-
-	if filter.Search != nil && *filter.Search != "" {
-		cond, arg := r.q.SearchCondition(*filter.Search, r.ftsEnabled)
-		conditions = append(conditions, cond)
-		args = append(args, arg)
-	}
-
-	q := "SELECT COUNT(*) FROM item"
-	if len(conditions) > 0 {
-		q += " WHERE " + strings.Join(conditions, " AND ")
-	}
-
-	var count int
-	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&count); err != nil {
+	count, err := r.q.CountItems(ctx, listFilter{Done: filter.Done, Search: filter.Search})
+	if err != nil {
 		return 0, fmt.Errorf("count items: %w", err)
 	}
 	return count, nil

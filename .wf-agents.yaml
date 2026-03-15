@@ -12,13 +12,16 @@
 
 tracking:
   lint:
-    - "make lint"
+    patterns:
+      - "make lint"
   test:
-    - "make test"
-    - "go test"
+    patterns:
+      - "make test"
+      - "go test"
   test-e2e:
-    - "make test-e2e"
-    - "npx playwright test"
+    patterns:
+      - "make test-e2e"
+      - "npx playwright test"
 
 teammate_idle:
   - match: DEVELOPING

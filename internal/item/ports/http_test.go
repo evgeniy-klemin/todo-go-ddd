@@ -168,7 +168,7 @@ func TestPatchItemsItemid_DoneTrue_Returns200(t *testing.T) {
 		t.Errorf("expected 200, got %d", rec.Code)
 	}
 
-	var body map[string]interface{}
+	var body map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("failed to parse response body: %v", err)
 	}

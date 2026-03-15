@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 
@@ -10,11 +11,13 @@ import (
 )
 
 type sqliteAdapter struct {
-	q *sqlitedb.Queries
+	q          *sqlitedb.Queries
+	db         sqlitedb.DBTX
+	ftsEnabled bool
 }
 
-func newSQLiteAdapter(db *sql.DB) *sqliteAdapter {
-	return &sqliteAdapter{q: sqlitedb.New(db)}
+func newSQLiteAdapter(db *sql.DB, ftsEnabled bool) *sqliteAdapter {
+	return &sqliteAdapter{q: sqlitedb.New(db), db: db, ftsEnabled: ftsEnabled}
 }
 
 func (a *sqliteAdapter) GetItemByID(ctx context.Context, id string) (dbItem, error) {
@@ -55,11 +58,80 @@ func (a *sqliteAdapter) MaxPosition(ctx context.Context) (int64, error) {
 }
 
 func (a *sqliteAdapter) WithTx(tx *sql.Tx) querier {
-	return &sqliteAdapter{q: a.q.WithTx(tx)}
+	return &sqliteAdapter{q: a.q.WithTx(tx), db: tx, ftsEnabled: a.ftsEnabled}
 }
 
-func (a *sqliteAdapter) SearchCondition(search string, ftsEnabled bool) (string, interface{}) {
-	if ftsEnabled {
+func (a *sqliteAdapter) ListItems(ctx context.Context, filter listFilter, sort []sortField, limit, offset int) ([]dbItem, error) {
+	var conditions []string
+	var args []any
+
+	if filter.Done != nil {
+		conditions = append(conditions, "done=?")
+		args = append(args, *filter.Done)
+	}
+	if filter.Search != nil && *filter.Search != "" {
+		cond, arg := a.searchCondition(*filter.Search)
+		conditions = append(conditions, cond)
+		args = append(args, arg)
+	}
+
+	q := "SELECT id, name, position, done, created_at FROM item"
+	if len(conditions) > 0 {
+		q += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	q += " ORDER BY " + buildOrderBy(sort)
+	q += " LIMIT ? OFFSET ?"
+	queryArgs := make([]any, len(args), len(args)+2)
+	copy(queryArgs, args)
+	queryArgs = append(queryArgs, limit, offset)
+
+	rows, err := a.db.QueryContext(ctx, q, queryArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("list items: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var result []dbItem
+	for rows.Next() {
+		var item dbItem
+		if err := rows.Scan(&item.ID, &item.Name, &item.Position, &item.Done, &item.CreatedAt); err != nil {
+			return nil, fmt.Errorf("list items: %w", err)
+		}
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list items: %w", err)
+	}
+	return result, nil
+}
+
+func (a *sqliteAdapter) CountItems(ctx context.Context, filter listFilter) (int, error) {
+	var conditions []string
+	var args []any
+
+	if filter.Done != nil {
+		conditions = append(conditions, "done=?")
+		args = append(args, *filter.Done)
+	}
+	if filter.Search != nil && *filter.Search != "" {
+		cond, arg := a.searchCondition(*filter.Search)
+		conditions = append(conditions, cond)
+		args = append(args, arg)
+	}
+
+	q := "SELECT COUNT(*) FROM item"
+	if len(conditions) > 0 {
+		q += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	var count int
+	if err := a.db.QueryRowContext(ctx, q, args...).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count items: %w", err)
+	}
+	return count, nil
+}
+
+func (a *sqliteAdapter) searchCondition(search string) (string, any) {
+	if a.ftsEnabled {
 		return "item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)", buildFTSQuery(search)
 	}
 	return "LOWER(name) LIKE LOWER(?)", "%" + search + "%"
