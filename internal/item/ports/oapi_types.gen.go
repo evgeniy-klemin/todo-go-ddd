@@ -53,9 +53,6 @@ type PerPage int
 // ItemId defines model for item_id.
 type ItemId string
 
-// GetItemsJSONBody defines parameters for GetItems.
-type GetItemsJSONBody map[string]interface{}
-
 // GetItemsParams defines parameters for GetItems.
 type GetItemsParams struct {
 	// Count items per page
@@ -82,9 +79,6 @@ type PostItemsJSONBody ItemPost
 
 // PatchItemsItemidJSONBody defines parameters for PatchItemsItemid.
 type PatchItemsItemidJSONBody ItemPatch
-
-// GetItemsJSONRequestBody defines body for GetItems for application/json ContentType.
-type GetItemsJSONRequestBody GetItemsJSONBody
 
 // PostItemsJSONRequestBody defines body for PostItems for application/json ContentType.
 type PostItemsJSONRequestBody PostItemsJSONBody
