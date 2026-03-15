@@ -14,7 +14,7 @@ func init() {
 
 // upItemFulltext creates a FULLTEXT index on MySQL. No-op on SQLite (not supported).
 func upItemFulltext(ctx context.Context, db *sql.DB) error {
-	if Driver() != driver.MySQL {
+	if getDriver() != driver.MySQL {
 		return nil
 	}
 	_, err := db.ExecContext(ctx, "CREATE FULLTEXT INDEX idx_item_fulltext ON item (name)")
@@ -25,7 +25,7 @@ func upItemFulltext(ctx context.Context, db *sql.DB) error {
 }
 
 func downItemFulltext(ctx context.Context, db *sql.DB) error {
-	if Driver() != driver.MySQL {
+	if getDriver() != driver.MySQL {
 		return nil
 	}
 	_, err := db.ExecContext(ctx, "DROP INDEX idx_item_fulltext ON item")

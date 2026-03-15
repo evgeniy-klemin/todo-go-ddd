@@ -68,6 +68,13 @@ func TestRun_SQLite_IndexMigration(t *testing.T) {
 	assert.Equal(t, "idx_item_position", name)
 }
 
+func TestRun_UnsupportedDriver(t *testing.T) {
+	db := newTestDB(t)
+	err := migrations.Run(db, "postgres")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported database driver")
+}
+
 // TestRun_SQLite_FulltextMigrationIsNoOp verifies that migration 00003 is a
 // no-op on SQLite — no FULLTEXT index is created (SQLite does not support it).
 func TestRun_SQLite_FulltextMigrationIsNoOp(t *testing.T) {

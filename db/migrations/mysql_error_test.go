@@ -1,6 +1,6 @@
 package migrations
 
-// Internal test package so we can access the unexported isMySQLError helper.
+// White-box tests for the unexported isMySQLError helper.
 
 import (
 	"errors"

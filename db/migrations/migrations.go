@@ -14,19 +14,23 @@ var embedMigrations embed.FS
 
 var currentDriver string
 
-func SetDriver(d string) {
+func setDriver(d string) {
 	currentDriver = d
 }
 
-func Driver() string {
+func getDriver() string {
 	return currentDriver
 }
 
 // Run applies all pending migrations to db using the given driver name.
 func Run(db *sql.DB, d string) error {
-	SetDriver(d)
+	setDriver(d)
 	goose.SetBaseFS(embedMigrations)
-	if err := goose.SetDialect(gooseDialect(d)); err != nil {
+	dialect, err := gooseDialect(d)
+	if err != nil {
+		return err
+	}
+	if err := goose.SetDialect(dialect); err != nil {
 		return fmt.Errorf("goose set dialect: %w", err)
 	}
 	if err := goose.Up(db, "."); err != nil {
@@ -35,11 +39,13 @@ func Run(db *sql.DB, d string) error {
 	return nil
 }
 
-func gooseDialect(d string) string {
+func gooseDialect(d string) (string, error) {
 	switch d {
 	case driver.MySQL:
-		return "mysql"
+		return "mysql", nil
+	case driver.SQLite:
+		return "sqlite3", nil
 	default:
-		return "sqlite3"
+		return "", fmt.Errorf("unsupported database driver: %q", d)
 	}
 }

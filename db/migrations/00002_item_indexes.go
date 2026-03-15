@@ -15,7 +15,7 @@ func init() {
 }
 
 func upItemIndexes(ctx context.Context, db *sql.DB) error {
-	switch Driver() {
+	switch getDriver() {
 	case driver.MySQL:
 		_, err := db.ExecContext(ctx, "CREATE INDEX idx_item_position ON item (position)")
 		if err != nil && !isMySQLError(err, 1061) {
@@ -31,7 +31,7 @@ func upItemIndexes(ctx context.Context, db *sql.DB) error {
 }
 
 func downItemIndexes(ctx context.Context, db *sql.DB) error {
-	switch Driver() {
+	switch getDriver() {
 	case driver.MySQL:
 		_, err := db.ExecContext(ctx, "DROP INDEX idx_item_position ON item")
 		if err != nil && !isMySQLError(err, 1091) {
