@@ -7,10 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/evgeniy-klemin/todo/db/driver"
-	"github.com/evgeniy-klemin/todo/internal/item/app"
 	"github.com/evgeniy-klemin/todo/internal/item/domain"
 )
 
@@ -112,42 +110,19 @@ func (r *Repository) Add(ctx context.Context, item *domain.Item) (*domain.Item, 
 	return item, nil
 }
 
-func (r *Repository) All(
+func (r *Repository) List(
 	ctx context.Context,
-	done *bool,
-	search *string,
-	fields []app.ItemField,
+	filter domain.ListFilter,
+	sort []domain.SortField,
 	page, perPage int,
-	sortFields app.SortFields,
-) ([]app.Item, error) {
-	for _, field := range fields {
-		switch field {
-		case app.ItemFieldName, app.ItemFieldPosition, app.ItemFieldDone, app.ItemFieldCreatedAt:
-		default:
-			return nil, fmt.Errorf("field %d not found", field)
-		}
-	}
-
+) ([]*domain.Item, error) {
 	var orderBy []string
-	for _, sortField := range sortFields {
-		var col string
-		switch sortField.Field {
-		case app.ItemFieldName:
-			col = "name"
-		case app.ItemFieldPosition:
-			col = "position"
-		case app.ItemFieldDone:
-			col = "done"
-		case app.ItemFieldCreatedAt:
-			col = "created_at"
-		default:
-			return nil, fmt.Errorf("field %d not found", sortField.Field)
-		}
-		switch sortField.SortDirection {
-		case app.SortDirectionAsc:
-			col += " asc"
-		case app.SortDirectionDesc:
+	for _, s := range sort {
+		col := s.Field
+		if s.Direction == domain.SortDesc {
 			col += " desc"
+		} else {
+			col += " asc"
 		}
 		orderBy = append(orderBy, col)
 	}
@@ -158,25 +133,25 @@ func (r *Repository) All(
 	var conditions []string
 	var args []interface{}
 
-	if done != nil {
+	if filter.Done != nil {
 		conditions = append(conditions, "done=?")
-		args = append(args, *done)
+		args = append(args, *filter.Done)
 	}
 
-	if search != nil && *search != "" {
+	if filter.Search != nil && *filter.Search != "" {
 		if r.ftsEnabled {
 			if r.driver == driver.MySQL {
-				mysqlQuery := buildMySQLFTSQuery(*search)
+				mysqlQuery := buildMySQLFTSQuery(*filter.Search)
 				conditions = append(conditions, "MATCH(name) AGAINST(? IN BOOLEAN MODE)")
 				args = append(args, mysqlQuery)
 			} else {
-				ftsQuery := buildFTSQuery(*search)
+				ftsQuery := buildFTSQuery(*filter.Search)
 				conditions = append(conditions, "item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)")
 				args = append(args, ftsQuery)
 			}
 		} else {
 			conditions = append(conditions, "LOWER(name) LIKE LOWER(?)")
-			args = append(args, "%"+*search+"%")
+			args = append(args, "%"+*filter.Search+"%")
 		}
 	}
 
@@ -192,44 +167,19 @@ func (r *Repository) All(
 	if err != nil {
 		return nil, fmt.Errorf("query items: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
-	if len(fields) == 0 {
-		fields = app.DefaultItemFields
-	}
-
-	res := make([]app.Item, 0)
+	res := make([]*domain.Item, 0)
 	for rows.Next() {
-		var (
-			id        string
-			name      string
-			position  int64
-			doneVal   bool
-			createdAt time.Time
-		)
-		if err := rows.Scan(&id, &name, &position, &doneVal, &createdAt); err != nil {
+		var dbRow dbItem
+		if err := rows.Scan(&dbRow.ID, &dbRow.Name, &dbRow.Position, &dbRow.Done, &dbRow.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan item: %w", err)
 		}
-		item := app.Item{ID: id}
-		for _, field := range fields {
-			switch field {
-			case app.ItemFieldName:
-				n := name
-				item.Name = &n
-			case app.ItemFieldPosition:
-				p := int(position)
-				item.Position = &p
-			case app.ItemFieldDone:
-				d := doneVal
-				item.Done = &d
-			case app.ItemFieldCreatedAt:
-				t := createdAt
-				item.CreatedAt = &t
-			default:
-				return nil, fmt.Errorf("field %d not found", field)
-			}
+		domainItem, err := toDomainItem(dbRow)
+		if err != nil {
+			return nil, fmt.Errorf("convert item: %w", err)
 		}
-		res = append(res, item)
+		res = append(res, domainItem)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate items: %w", err)
@@ -237,29 +187,29 @@ func (r *Repository) All(
 	return res, nil
 }
 
-func (r *Repository) Count(ctx context.Context, done *bool, search *string) (int, error) {
+func (r *Repository) Count(ctx context.Context, filter domain.ListFilter) (int, error) {
 	var conditions []string
 	var args []interface{}
 
-	if done != nil {
+	if filter.Done != nil {
 		conditions = append(conditions, "done=?")
-		args = append(args, *done)
+		args = append(args, *filter.Done)
 	}
 
-	if search != nil && *search != "" {
+	if filter.Search != nil && *filter.Search != "" {
 		if r.ftsEnabled {
 			if r.driver == driver.MySQL {
-				mysqlQuery := buildMySQLFTSQuery(*search)
+				mysqlQuery := buildMySQLFTSQuery(*filter.Search)
 				conditions = append(conditions, "MATCH(name) AGAINST(? IN BOOLEAN MODE)")
 				args = append(args, mysqlQuery)
 			} else {
-				ftsQuery := buildFTSQuery(*search)
+				ftsQuery := buildFTSQuery(*filter.Search)
 				conditions = append(conditions, "item.rowid IN (SELECT rowid FROM item_fts WHERE item_fts MATCH ?)")
 				args = append(args, ftsQuery)
 			}
 		} else {
 			conditions = append(conditions, "LOWER(name) LIKE LOWER(?)")
-			args = append(args, "%"+*search+"%")
+			args = append(args, "%"+*filter.Search+"%")
 		}
 	}
 

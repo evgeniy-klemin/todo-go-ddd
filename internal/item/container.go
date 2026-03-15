@@ -30,7 +30,7 @@ func NewContainer(db *sql.DB, drv string, ftsEnabled bool) *Container {
 	default:
 		panic(fmt.Sprintf("unsupported database driver: %s", drv))
 	}
-	service := app.NewItemService(repo, repo)
+	service := app.NewItemService(repo)
 	httpServer := ports.NewHttpServer(service)
 	return &Container{httpServer: httpServer}
 }

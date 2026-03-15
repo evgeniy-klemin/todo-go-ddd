@@ -21,6 +21,8 @@ type mockDomainRepository struct {
 	addFn                 func(ctx context.Context, item *domain.Item) (*domain.Item, error)
 	addWithNextPositionFn func(ctx context.Context, item *domain.Item) (*domain.Item, error)
 	updateFn              func(ctx context.Context, id domain.ModelID, updater func(*domain.Item) error) (*domain.Item, error)
+	listFn                func(ctx context.Context, filter domain.ListFilter, sort []domain.SortField, page, perPage int) ([]*domain.Item, error)
+	countFn               func(ctx context.Context, filter domain.ListFilter) (int, error)
 }
 
 func (m *mockDomainRepository) GetByID(ctx context.Context, id domain.ModelID) (*domain.Item, error) {
@@ -51,21 +53,16 @@ func (m *mockDomainRepository) Update(ctx context.Context, id domain.ModelID, up
 	return nil, nil
 }
 
-type mockQueryRepository struct {
-	allFn   func(ctx context.Context, done *bool, search *string, fields []ItemField, page, perPage int, sortFields SortFields) ([]Item, error)
-	countFn func(ctx context.Context, done *bool, search *string) (int, error)
-}
-
-func (m *mockQueryRepository) All(ctx context.Context, done *bool, search *string, fields []ItemField, page, perPage int, sortFields SortFields) ([]Item, error) {
-	if m.allFn != nil {
-		return m.allFn(ctx, done, search, fields, page, perPage, sortFields)
+func (m *mockDomainRepository) List(ctx context.Context, filter domain.ListFilter, sort []domain.SortField, page, perPage int) ([]*domain.Item, error) {
+	if m.listFn != nil {
+		return m.listFn(ctx, filter, sort, page, perPage)
 	}
 	return nil, nil
 }
 
-func (m *mockQueryRepository) Count(ctx context.Context, done *bool, search *string) (int, error) {
+func (m *mockDomainRepository) Count(ctx context.Context, filter domain.ListFilter) (int, error) {
 	if m.countFn != nil {
-		return m.countFn(ctx, done, search)
+		return m.countFn(ctx, filter)
 	}
 	return 0, nil
 }
@@ -74,8 +71,8 @@ func (m *mockQueryRepository) Count(ctx context.Context, done *bool, search *str
 
 func intPtr(v int) *int { return &v }
 
-func newService(domainRepo domain.Repository, queryRepo QueryRepository) *ItemService {
-	return NewItemService(domainRepo, queryRepo)
+func newService(domainRepo domain.Repository) *ItemService {
+	return NewItemService(domainRepo)
 }
 
 // --- tests ---
@@ -94,7 +91,7 @@ func TestCreate_WithExplicitPosition_CallsAdd(t *testing.T) {
 		},
 	}
 
-	svc := newService(domainRepo, &mockQueryRepository{})
+	svc := newService(domainRepo)
 
 	item, err := svc.Create(context.Background(), "Task 1", intPtr(5))
 	if err != nil {
@@ -129,7 +126,7 @@ func TestCreate_WithoutPosition_CallsAddWithNextPosition(t *testing.T) {
 		},
 	}
 
-	svc := newService(domainRepo, &mockQueryRepository{})
+	svc := newService(domainRepo)
 
 	item, err := svc.Create(context.Background(), "Task 2", nil)
 	if err != nil {
@@ -147,7 +144,7 @@ func TestCreate_WithoutPosition_CallsAddWithNextPosition(t *testing.T) {
 }
 
 func TestCreate_EmptyName_ReturnsValidationError(t *testing.T) {
-	svc := newService(&mockDomainRepository{}, &mockQueryRepository{})
+	svc := newService(&mockDomainRepository{})
 
 	_, err := svc.Create(context.Background(), "", intPtr(1))
 	if err == nil {
@@ -163,7 +160,7 @@ func TestCreate_EmptyName_ReturnsValidationError(t *testing.T) {
 
 func TestCreate_NameTooLong_ReturnsValidationError(t *testing.T) {
 	longName := strings.Repeat("a", domain.NameMaxLength+1)
-	svc := newService(&mockDomainRepository{}, &mockQueryRepository{})
+	svc := newService(&mockDomainRepository{})
 
 	_, err := svc.Create(context.Background(), longName, intPtr(1))
 	if err == nil {
@@ -185,7 +182,7 @@ func TestCreate_AddWithNextPositionError_Propagated(t *testing.T) {
 		},
 	}
 
-	svc := newService(domainRepo, &mockQueryRepository{})
+	svc := newService(domainRepo)
 
 	_, err := svc.Create(context.Background(), "Task 4", nil)
 	if !errors.Is(err, repoErr) {
@@ -201,7 +198,7 @@ func TestCreate_DomainRepositoryAddError_Propagated(t *testing.T) {
 		},
 	}
 
-	svc := newService(domainRepo, &mockQueryRepository{})
+	svc := newService(domainRepo)
 
 	_, err := svc.Create(context.Background(), "Task 5", intPtr(2))
 	if !errors.Is(err, addErr) {
@@ -223,7 +220,7 @@ func TestUpdate_SetDoneTrue_CallsComplete(t *testing.T) {
 		},
 	}
 
-	svc := newService(domainRepo, &mockQueryRepository{})
+	svc := newService(domainRepo)
 	result, err := svc.Update(context.Background(), &Item{
 		ID:   "00000000-0000-0000-0000-000000000001",
 		Done: boolPtr(true),
@@ -248,7 +245,7 @@ func TestUpdate_SetDoneFalse_CallsUncomplete(t *testing.T) {
 		},
 	}
 
-	svc := newService(domainRepo, &mockQueryRepository{})
+	svc := newService(domainRepo)
 	result, err := svc.Update(context.Background(), &Item{
 		ID:   "00000000-0000-0000-0000-000000000001",
 		Done: boolPtr(false),
@@ -261,21 +258,19 @@ func TestUpdate_SetDoneFalse_CallsUncomplete(t *testing.T) {
 	}
 }
 
-func strPtr(v string) *string { return &v }
-
 func TestList_PassesSearchToRepository(t *testing.T) {
 	var capturedSearch *string
-	queryRepo := &mockQueryRepository{
-		allFn: func(_ context.Context, _ *bool, search *string, _ []ItemField, _, _ int, _ SortFields) ([]Item, error) {
-			capturedSearch = search
-			return []Item{}, nil
+	domainRepo := &mockDomainRepository{
+		listFn: func(_ context.Context, filter domain.ListFilter, _ []domain.SortField, _, _ int) ([]*domain.Item, error) {
+			capturedSearch = filter.Search
+			return []*domain.Item{}, nil
 		},
-		countFn: func(_ context.Context, _ *bool, search *string) (int, error) {
+		countFn: func(_ context.Context, filter domain.ListFilter) (int, error) {
 			return 0, nil
 		},
 	}
 
-	svc := newService(&mockDomainRepository{}, queryRepo)
+	svc := newService(domainRepo)
 	searchTerm := "buy"
 	_, err := svc.List(context.Background(), ListQuery{
 		Search:  &searchTerm,
@@ -295,20 +290,20 @@ func TestList_PassesSearchToRepository(t *testing.T) {
 
 func TestList_NilSearch_PassesNilToRepository(t *testing.T) {
 	searchChecked := false
-	queryRepo := &mockQueryRepository{
-		allFn: func(_ context.Context, _ *bool, search *string, _ []ItemField, _, _ int, _ SortFields) ([]Item, error) {
+	domainRepo := &mockDomainRepository{
+		listFn: func(_ context.Context, filter domain.ListFilter, _ []domain.SortField, _, _ int) ([]*domain.Item, error) {
 			searchChecked = true
-			if search != nil {
-				t.Errorf("expected nil search, got '%s'", *search)
+			if filter.Search != nil {
+				t.Errorf("expected nil search, got '%s'", *filter.Search)
 			}
-			return []Item{}, nil
+			return []*domain.Item{}, nil
 		},
-		countFn: func(_ context.Context, _ *bool, search *string) (int, error) {
+		countFn: func(_ context.Context, filter domain.ListFilter) (int, error) {
 			return 0, nil
 		},
 	}
 
-	svc := newService(&mockDomainRepository{}, queryRepo)
+	svc := newService(domainRepo)
 	_, err := svc.List(context.Background(), ListQuery{
 		Page:    1,
 		PerPage: 20,
@@ -317,12 +312,12 @@ func TestList_NilSearch_PassesNilToRepository(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !searchChecked {
-		t.Fatal("All was not called")
+		t.Fatal("List was not called")
 	}
 }
 
 func TestUpdate_InvalidID_ReturnsError(t *testing.T) {
-	svc := newService(&mockDomainRepository{}, &mockQueryRepository{})
+	svc := newService(&mockDomainRepository{})
 	_, err := svc.Update(context.Background(), &Item{
 		ID:   "short",
 		Done: boolPtr(true),
@@ -342,7 +337,7 @@ func TestGetItemByID_NotFound_ReturnsErrNotFound(t *testing.T) {
 		},
 	}
 
-	svc := newService(domainRepo, &mockQueryRepository{})
+	svc := newService(domainRepo)
 	_, err := svc.GetItemByID(context.Background(), "00000000-0000-0000-0000-000000000001")
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -362,7 +357,7 @@ func TestUpdate_NotFound_ReturnsErrNotFound(t *testing.T) {
 		},
 	}
 
-	svc := newService(domainRepo, &mockQueryRepository{})
+	svc := newService(domainRepo)
 	_, err := svc.Update(context.Background(), &Item{
 		ID:   "00000000-0000-0000-0000-000000000001",
 		Done: boolPtr(true),

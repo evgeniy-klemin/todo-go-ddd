@@ -66,9 +66,9 @@ func TestSearch(t *testing.T) {
 			insertItems(t, repo, "Buy milk", "Buy eggs", "Walk the dog", "Read a book")
 
 			search := "buy"
-			items, err := repo.All(context.Background(), nil, &search, nil, 1, 20, nil)
+			items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
 			if err != nil {
-				t.Fatalf("All: %v", err)
+				t.Fatalf("List: %v", err)
 			}
 			if len(items) != 2 {
 				t.Errorf("expected 2 items matching 'buy', got %d", len(items))
@@ -85,9 +85,9 @@ func TestSearch(t *testing.T) {
 			insertItems(t, repo, "Buy milk")
 
 			search := "xyz"
-			items, err := repo.All(context.Background(), nil, &search, nil, 1, 20, nil)
+			items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
 			if err != nil {
-				t.Fatalf("All: %v", err)
+				t.Fatalf("List: %v", err)
 			}
 			if len(items) != 0 {
 				t.Errorf("expected 0 items matching 'xyz', got %d", len(items))
@@ -104,9 +104,9 @@ func TestSearch(t *testing.T) {
 			insertItems(t, repo, "Buy Milk")
 
 			search := "buy milk"
-			items, err := repo.All(context.Background(), nil, &search, nil, 1, 20, nil)
+			items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
 			if err != nil {
-				t.Fatalf("All: %v", err)
+				t.Fatalf("List: %v", err)
 			}
 			if len(items) != 1 {
 				t.Errorf("expected 1 item matching 'buy milk' (case-insensitive), got %d", len(items))
@@ -123,9 +123,9 @@ func TestSearch(t *testing.T) {
 			insertItems(t, repo, "Buy milk and eggs")
 
 			search := "milk"
-			items, err := repo.All(context.Background(), nil, &search, nil, 1, 20, nil)
+			items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
 			if err != nil {
-				t.Fatalf("All: %v", err)
+				t.Fatalf("List: %v", err)
 			}
 			if len(items) != 1 {
 				t.Errorf("expected 1 item matching partial 'milk', got %d", len(items))
@@ -142,9 +142,9 @@ func TestSearch(t *testing.T) {
 			insertItems(t, repo, "Buying groceries", "Buy milk", "Walk the dog")
 
 			search := "buy"
-			items, err := repo.All(context.Background(), nil, &search, nil, 1, 20, nil)
+			items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
 			if err != nil {
-				t.Fatalf("All: %v", err)
+				t.Fatalf("List: %v", err)
 			}
 			if len(items) != 2 {
 				t.Errorf("expected 2 items matching prefix 'buy', got %d", len(items))
@@ -161,9 +161,9 @@ func TestSearch(t *testing.T) {
 			insertItems(t, repo, "Buy milk and eggs", "Buy bread", "Get milk")
 
 			search := "buy milk"
-			items, err := repo.All(context.Background(), nil, &search, nil, 1, 20, nil)
+			items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
 			if err != nil {
-				t.Fatalf("All: %v", err)
+				t.Fatalf("List: %v", err)
 			}
 			if len(items) != 1 {
 				t.Errorf("expected 1 item matching 'buy milk', got %d", len(items))
@@ -179,9 +179,9 @@ func TestSearch(t *testing.T) {
 			repo := NewSQLite(db, true)
 			insertItems(t, repo, "Task 1", "Task 2", "Task 3")
 
-			items, err := repo.All(context.Background(), nil, nil, nil, 1, 20, nil)
+			items, err := repo.List(context.Background(), domain.ListFilter{}, nil, 1, 20)
 			if err != nil {
-				t.Fatalf("All: %v", err)
+				t.Fatalf("List: %v", err)
 			}
 			if len(items) != 3 {
 				t.Errorf("expected 3 items with nil search, got %d", len(items))
@@ -197,9 +197,9 @@ func TestSearch(t *testing.T) {
 			insertItems(t, repo, "Buy milk", "Buy eggs", "Walk the dog", "Read a book")
 
 			search := "buy"
-			items, err := repo.All(context.Background(), nil, &search, nil, 1, 20, nil)
+			items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
 			if err != nil {
-				t.Fatalf("All with LIKE fallback: %v", err)
+				t.Fatalf("List with LIKE fallback: %v", err)
 			}
 			if len(items) != 2 {
 				t.Errorf("expected 2 items matching 'buy' via LIKE fallback, got %d", len(items))
@@ -213,7 +213,7 @@ func TestSearch(t *testing.T) {
 			insertItems(t, repo, "Buy milk", "Buy eggs", "Walk the dog")
 
 			search := "buy"
-			count, err := repo.Count(context.Background(), nil, &search)
+			count, err := repo.Count(context.Background(), domain.ListFilter{Search: &search})
 			if err != nil {
 				t.Fatalf("Count with LIKE fallback: %v", err)
 			}
@@ -273,7 +273,7 @@ func TestCount(t *testing.T) {
 		insertItems(t, repo, "Buy milk", "Buy eggs", "Walk the dog")
 
 		search := "buy"
-		count, err := repo.Count(context.Background(), nil, &search)
+		count, err := repo.Count(context.Background(), domain.ListFilter{Search: &search})
 		if err != nil {
 			t.Fatalf("Count: %v", err)
 		}
@@ -282,7 +282,7 @@ func TestCount(t *testing.T) {
 		}
 
 		// nil search returns all
-		count, err = repo.Count(context.Background(), nil, nil)
+		count, err = repo.Count(context.Background(), domain.ListFilter{})
 		if err != nil {
 			t.Fatalf("Count: %v", err)
 		}
