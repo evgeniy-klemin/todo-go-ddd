@@ -24,9 +24,9 @@ type ItemService interface {
 
 func httpError(ctx echo.Context, err error) error {
 	switch {
-	case errors.Is(err, domain.ErrNotFound):
+	case errors.Is(err, app.ErrNotFound):
 		return ctx.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
-	case errors.Is(err, domain.ErrNameLength), errors.Is(err, domain.ErrPositionValue):
+	case errors.Is(err, app.ErrValidation):
 		return ctx.JSON(http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 	default:
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "internal server error"})

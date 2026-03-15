@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -66,6 +67,9 @@ func (r *Repository) AddWithNextPosition(ctx context.Context, item *domain.Item)
 func (r *Repository) GetByID(ctx context.Context, id domain.ModelID) (*domain.Item, error) {
 	item, err := r.q.GetItemByID(ctx, id.String())
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	return toDomainItem(item)
@@ -75,6 +79,9 @@ func (r *Repository) getByID(ctx context.Context, tx *sql.Tx, id domain.ModelID)
 	txQ := r.q.WithTx(tx)
 	item, err := txQ.GetItemByID(ctx, id.String())
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	return toDomainItem(item)
