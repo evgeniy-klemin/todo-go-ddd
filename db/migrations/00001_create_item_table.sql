@@ -1,3 +1,4 @@
+-- +goose Up
 CREATE TABLE IF NOT EXISTS item (
     id VARCHAR(36) NOT NULL PRIMARY KEY,
     name VARCHAR(1000) NOT NULL,
@@ -5,3 +6,6 @@ CREATE TABLE IF NOT EXISTS item (
     done BOOL NOT NULL DEFAULT FALSE,
     created_at DATETIME NOT NULL
 );
+
+-- +goose Down
+DROP TABLE IF EXISTS item;

@@ -14,7 +14,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/evgeniy-klemin/todo"
-	"github.com/evgeniy-klemin/todo/db/schema"
+	"github.com/evgeniy-klemin/todo/db/driver"
+	"github.com/evgeniy-klemin/todo/db/fts"
+	"github.com/evgeniy-klemin/todo/db/migrations"
 	item "github.com/evgeniy-klemin/todo/internal/item"
 	itemports "github.com/evgeniy-klemin/todo/internal/item/ports"
 )
@@ -57,32 +59,37 @@ func server(port int) {
 	// Swagger validation
 	setOapiValidator(e)
 
-	driver := os.Getenv("DB_DRIVER")
-	if driver == "" {
-		driver = schema.DriverSQLite
+	drv := os.Getenv("DB_DRIVER")
+	if drv == "" {
+		drv = driver.SQLite
 	}
 
 	dsn := os.Getenv("DB_DSN")
 	if dsn == "" {
-		switch driver {
-		case schema.DriverMySQL:
+		switch drv {
+		case driver.MySQL:
 			dsn = "todo:todo@tcp(localhost)/todotest?parseTime=true"
 		default:
 			dsn = "file:todotest.db?cache=shared"
 		}
 	}
 
-	db, err := sql.Open(driver, dsn)
+	db, err := sql.Open(drv, dsn)
 	if err != nil {
 		panic(err)
 	}
-	ftsEnabled, err := schema.ApplyAll(db, driver)
-	if err != nil {
+	if err := migrations.Run(db, drv); err != nil {
 		panic(err)
+	}
+	var ftsEnabled bool
+	if drv == driver.MySQL {
+		ftsEnabled = true // FULLTEXT index created by goose migration 00003
+	} else {
+		ftsEnabled = fts.Apply(db)
 	}
 	if !ftsEnabled {
-		switch driver {
-		case schema.DriverMySQL:
+		switch drv {
+		case driver.MySQL:
 			fmt.Fprintf(os.Stderr, "Warning: MySQL FULLTEXT index not available, falling back to LIKE search\n")
 		default:
 			fmt.Fprintf(os.Stderr, "Warning: FTS5 not available, falling back to LIKE search\n")
@@ -90,7 +97,7 @@ func server(port int) {
 	}
 
 	// Containers
-	itemContainer := item.NewContainer(db, driver, ftsEnabled)
+	itemContainer := item.NewContainer(db, drv, ftsEnabled)
 
 	// Register http handlers
 	itemContainer.RegisterHandlers(e)

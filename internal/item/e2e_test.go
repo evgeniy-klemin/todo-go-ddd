@@ -12,28 +12,30 @@ import (
 	"github.com/labstack/echo/v4"
 	_ "github.com/mattn/go-sqlite3"
 
-	"github.com/evgeniy-klemin/todo/db/schema"
+	"github.com/evgeniy-klemin/todo/db/driver"
+	"github.com/evgeniy-klemin/todo/db/fts"
+	"github.com/evgeniy-klemin/todo/db/migrations"
 	item "github.com/evgeniy-klemin/todo/internal/item"
 	"github.com/evgeniy-klemin/todo/internal/item/ports"
 )
 
 func setupE2EDB(t *testing.T) (*sql.DB, bool) {
 	t.Helper()
-	db, err := sql.Open(schema.DriverSQLite, ":memory:")
+	db, err := sql.Open(driver.SQLite, ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	ftsEnabled, err := schema.ApplyAll(db, schema.DriverSQLite)
-	if err != nil {
-		t.Fatalf("apply schema: %v", err)
+	if err := migrations.Run(db, driver.SQLite); err != nil {
+		t.Fatalf("apply migrations: %v", err)
 	}
+	ftsEnabled := fts.Apply(db)
 	return db, ftsEnabled
 }
 
 func setupE2EServer(t *testing.T) (*echo.Echo, *sql.DB) {
 	t.Helper()
 	db, ftsEnabled := setupE2EDB(t)
-	container := item.NewContainer(db, schema.DriverSQLite, ftsEnabled)
+	container := item.NewContainer(db, driver.SQLite, ftsEnabled)
 
 	e := echo.New()
 	container.RegisterHandlers(e)
