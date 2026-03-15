@@ -23,13 +23,38 @@ type ItemService interface {
 }
 
 func httpError(ctx echo.Context, err error) error {
+	// Extract the innermost error message for the client response
+	msg := innermostError(err).Error()
+
 	switch {
 	case errors.Is(err, app.ErrNotFound):
-		return ctx.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		return ctx.JSON(http.StatusNotFound, map[string]string{"error": msg})
 	case errors.Is(err, app.ErrValidation):
-		return ctx.JSON(http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		return ctx.JSON(http.StatusUnprocessableEntity, map[string]string{"error": msg})
 	default:
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+	}
+}
+
+// innermostError walks the error chain and returns the deepest wrapped error.
+func innermostError(err error) error {
+	for {
+		switch x := err.(type) {
+		case interface{ Unwrap() []error }:
+			errs := x.Unwrap()
+			if len(errs) == 0 {
+				return err
+			}
+			err = errs[len(errs)-1] // last error is the domain error (rightmost %w)
+		case interface{ Unwrap() error }:
+			unwrapped := x.Unwrap()
+			if unwrapped == nil {
+				return err
+			}
+			err = unwrapped
+		default:
+			return err
+		}
 	}
 }
 
