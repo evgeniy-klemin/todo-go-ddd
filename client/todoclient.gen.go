@@ -20,11 +20,7 @@ import (
 
 // ErrBadParams defines model for ErrBadParams.
 type ErrBadParams struct {
-	Fields *[]struct {
-		Field   *string `json:"field,omitempty"`
-		Message *string `json:"message,omitempty"`
-	} `json:"fields,omitempty"`
-	Message *string `json:"message,omitempty"`
+	Error string `json:"error"`
 }
 
 // ItemPatch defines model for ItemPatch.
@@ -87,6 +83,9 @@ type GetItemsParams struct {
 
 	// Filter by done
 	Done *bool `json:"done,omitempty"`
+
+	// Search by name
+	Q *string `json:"q,omitempty"`
 }
 
 // PostItemsJSONBody defines parameters for PostItems.
@@ -392,6 +391,22 @@ func NewGetItemsRequestWithBody(server string, params *GetItemsParams, contentTy
 
 	}
 
+	if params.Q != nil {
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "q", runtime.ParamLocationQuery, *params.Q); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+	}
+
 	queryURL.RawQuery = queryValues.Encode()
 
 	req, err := http.NewRequest("GET", queryURL.String(), body)
@@ -613,7 +628,7 @@ type PostItemsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON201      *ItemResponse
-	JSON400      *ErrBadParams
+	JSON422      *ErrBadParams
 }
 
 // Status returns HTTPResponse.Status
@@ -783,12 +798,12 @@ func ParsePostItemsResponse(rsp *http.Response) (*PostItemsResponse, error) {
 		}
 		response.JSON201 = &dest
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrBadParams
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON400 = &dest
+		response.JSON422 = &dest
 
 	}
 
