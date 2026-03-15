@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/evgeniy-klemin/todo/internal/item/domain"
@@ -109,21 +108,12 @@ func (r *Repository) List(
 	sort []domain.SortField,
 	page, perPage int,
 ) ([]*domain.Item, error) {
-	var orderBy []string
-	for _, s := range sort {
-		col := s.Field
-		if s.Direction == domain.SortDesc {
-			col += " desc"
-		} else {
-			col += " asc"
-		}
-		orderBy = append(orderBy, col)
-	}
-	if len(orderBy) == 0 {
-		orderBy = append(orderBy, "position asc")
+	dbSort := make([]sortField, len(sort))
+	for i, s := range sort {
+		dbSort[i] = sortField{Field: s.Field, Desc: s.Direction == domain.SortDesc}
 	}
 
-	dbRows, err := r.q.ListItems(ctx, listFilter{Done: filter.Done, Search: filter.Search}, strings.Join(orderBy, ", "), perPage, perPage*(page-1))
+	dbRows, err := r.q.ListItems(ctx, listFilter{Done: filter.Done, Search: filter.Search}, dbSort, perPage, perPage*(page-1))
 	if err != nil {
 		return nil, fmt.Errorf("query items: %w", err)
 	}

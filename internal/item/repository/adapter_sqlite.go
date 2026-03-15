@@ -61,7 +61,7 @@ func (a *sqliteAdapter) WithTx(tx *sql.Tx) querier {
 	return &sqliteAdapter{q: a.q.WithTx(tx), db: tx, ftsEnabled: a.ftsEnabled}
 }
 
-func (a *sqliteAdapter) ListItems(ctx context.Context, filter listFilter, orderBy string, limit, offset int) ([]dbItem, error) {
+func (a *sqliteAdapter) ListItems(ctx context.Context, filter listFilter, sort []sortField, limit, offset int) ([]dbItem, error) {
 	var conditions []string
 	var args []interface{}
 
@@ -79,7 +79,7 @@ func (a *sqliteAdapter) ListItems(ctx context.Context, filter listFilter, orderB
 	if len(conditions) > 0 {
 		q += " WHERE " + strings.Join(conditions, " AND ")
 	}
-	q += " ORDER BY " + orderBy
+	q += " ORDER BY " + buildOrderBy(sort)
 	q += " LIMIT ? OFFSET ?"
 	queryArgs := make([]interface{}, len(args), len(args)+2)
 	copy(queryArgs, args)

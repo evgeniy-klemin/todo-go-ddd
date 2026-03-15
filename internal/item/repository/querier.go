@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 )
 
@@ -22,6 +23,29 @@ type listFilter struct {
 	Search *string
 }
 
+// sortField carries a single ORDER BY field and direction.
+type sortField struct {
+	Field string
+	Desc  bool
+}
+
+// buildOrderBy converts a slice of sortField into an ORDER BY clause string.
+// Defaults to "position asc" when the slice is empty.
+func buildOrderBy(sort []sortField) string {
+	if len(sort) == 0 {
+		return "position asc"
+	}
+	parts := make([]string, len(sort))
+	for i, s := range sort {
+		if s.Desc {
+			parts[i] = s.Field + " desc"
+		} else {
+			parts[i] = s.Field + " asc"
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
 // querier abstracts over the sqlc-generated query types for both SQLite and MySQL,
 // allowing the repository to stay database-agnostic.
 type querier interface {
@@ -30,7 +54,7 @@ type querier interface {
 	UpdateItem(ctx context.Context, name string, position int64, done bool, id string) error
 	MaxPosition(ctx context.Context) (int64, error)
 	// ListItems executes a SELECT query applying filter, ORDER BY, LIMIT, OFFSET.
-	ListItems(ctx context.Context, filter listFilter, orderBy string, limit, offset int) ([]dbItem, error)
+	ListItems(ctx context.Context, filter listFilter, sort []sortField, limit, offset int) ([]dbItem, error)
 	// CountItems executes a COUNT query applying filter.
 	CountItems(ctx context.Context, filter listFilter) (int, error)
 	// WithTx returns a new querier backed by the given transaction.
