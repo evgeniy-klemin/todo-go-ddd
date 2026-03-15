@@ -208,12 +208,6 @@ paths:
           in: query
           name: q
           description: Search by name
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties: {}
 components:
   schemas:
     ItemPost:
