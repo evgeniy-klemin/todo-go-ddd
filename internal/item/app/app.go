@@ -20,7 +20,22 @@ func NewItemService(domainRepository domain.Repository, queryRepository QueryRep
 	}
 }
 
-func (s *ItemService) GetItemByID(ctx context.Context, id string) (*domain.Item, error) {
+func domainToAppItem(d *domain.Item) *Item {
+	name := d.Name().String()
+	position := d.Position().Int()
+	done := d.Done()
+	createdAt := d.CreatedAt()
+	id := d.ID()
+	return &Item{
+		ID:        id.String(),
+		Name:      &name,
+		Position:  &position,
+		Done:      &done,
+		CreatedAt: &createdAt,
+	}
+}
+
+func (s *ItemService) GetItemByID(ctx context.Context, id string) (*Item, error) {
 	modelID, err := domain.NewModelID(id)
 	if err != nil {
 		return nil, Validation("get item by id", err)
@@ -32,10 +47,10 @@ func (s *ItemService) GetItemByID(ctx context.Context, id string) (*domain.Item,
 		}
 		return nil, err
 	}
-	return item, nil
+	return domainToAppItem(item), nil
 }
 
-func (s *ItemService) Create(ctx context.Context, name string, position *int) (*domain.Item, error) {
+func (s *ItemService) Create(ctx context.Context, name string, position *int) (*Item, error) {
 	if position != nil {
 		item, err := domain.NewItem(name, *position)
 		if err != nil {
@@ -49,7 +64,7 @@ func (s *ItemService) Create(ctx context.Context, name string, position *int) (*
 		}
 		resultID := result.ID()
 		slog.InfoContext(ctx, "item created", "id", resultID.String(), "position", result.Position().Int())
-		return result, nil
+		return domainToAppItem(result), nil
 	}
 
 	// Auto-position: create with placeholder, repo will assign real position atomically
@@ -65,7 +80,7 @@ func (s *ItemService) Create(ctx context.Context, name string, position *int) (*
 	}
 	resultID := result.ID()
 	slog.InfoContext(ctx, "item created", "id", resultID.String(), "position", result.Position().Int())
-	return result, nil
+	return domainToAppItem(result), nil
 }
 
 func (s *ItemService) List(ctx context.Context, query ListQuery) (ListResult, error) {
@@ -80,7 +95,7 @@ func (s *ItemService) List(ctx context.Context, query ListQuery) (ListResult, er
 	return ListResult{Items: items, TotalCount: count}, nil
 }
 
-func (s *ItemService) Update(ctx context.Context, reqItem *Item) (*domain.Item, error) {
+func (s *ItemService) Update(ctx context.Context, reqItem *Item) (*Item, error) {
 	modelID, err := domain.NewModelID(reqItem.ID)
 	if err != nil {
 		return nil, Validation("update item", err)
@@ -111,5 +126,5 @@ func (s *ItemService) Update(ctx context.Context, reqItem *Item) (*domain.Item, 
 		}
 		return nil, err
 	}
-	return result, nil
+	return domainToAppItem(result), nil
 }

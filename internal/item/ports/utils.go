@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/evgeniy-klemin/todo/internal/item/app"
-	"github.com/evgeniy-klemin/todo/internal/item/domain"
 	"github.com/pkg/errors"
 )
 
@@ -57,18 +56,18 @@ func appItemsToRespItems(appItems []app.Item) []ItemResponse {
 	return res
 }
 
-func domainItemToResp(domainItem *domain.Item) *ItemResponse {
-	name := domainItem.Name().String()
-	position := domainItem.Position().Int()
-	done := domainItem.Done()
-	createdAt := domainItem.CreatedAt()
-	id := domainItem.ID()
+func appItemToResp(appItem *app.Item) *ItemResponse {
+	var respCreatedAt *time.Time
+	if appItem.CreatedAt != nil {
+		createdAt := (*appItem.CreatedAt).UTC()
+		respCreatedAt = &createdAt
+	}
 	return &ItemResponse{
-		Id:        id.String(),
-		Name:      &name,
-		Position:  &position,
-		Done:      &done,
-		CreatedAt: &createdAt,
+		Id:        appItem.ID,
+		Name:      appItem.Name,
+		Position:  appItem.Position,
+		Done:      appItem.Done,
+		CreatedAt: respCreatedAt,
 	}
 }
 

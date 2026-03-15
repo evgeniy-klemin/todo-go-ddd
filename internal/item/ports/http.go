@@ -11,7 +11,6 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/evgeniy-klemin/todo/internal/item/app"
-	"github.com/evgeniy-klemin/todo/internal/item/domain"
 )
 
 // errorStatusMap maps app error kinds to HTTP status codes.
@@ -22,10 +21,10 @@ var errorStatusMap = map[error]int{
 
 // ItemService defines the port that the HTTP handler requires from the application layer.
 type ItemService interface {
-	Create(ctx context.Context, name string, position *int) (*domain.Item, error)
-	GetItemByID(ctx context.Context, id string) (*domain.Item, error)
+	Create(ctx context.Context, name string, position *int) (*app.Item, error)
+	GetItemByID(ctx context.Context, id string) (*app.Item, error)
 	List(ctx context.Context, query app.ListQuery) (app.ListResult, error)
-	Update(ctx context.Context, reqItem *app.Item) (*domain.Item, error)
+	Update(ctx context.Context, reqItem *app.Item) (*app.Item, error)
 }
 
 func httpError(ctx echo.Context, err error) error {
@@ -113,7 +112,7 @@ func (h *HttpServer) PostItems(ctx echo.Context) error {
 		return httpError(ctx, err)
 	}
 
-	respItem := domainItemToResp(item)
+	respItem := appItemToResp(item)
 
 	return ctx.JSON(http.StatusCreated, respItem)
 }
@@ -126,7 +125,7 @@ func (h *HttpServer) GetItemsItemId(ctx echo.Context, itemId ItemId) error {
 		return httpError(ctx, err)
 	}
 
-	respItem := domainItemToResp(item)
+	respItem := appItemToResp(item)
 
 	return ctx.JSON(http.StatusOK, respItem)
 }
@@ -151,7 +150,7 @@ func (h *HttpServer) PatchItemsItemid(ctx echo.Context, itemId ItemId) error {
 		return httpError(ctx, err)
 	}
 
-	respItem := domainItemToResp(item)
+	respItem := appItemToResp(item)
 
 	return ctx.JSON(http.StatusOK, respItem)
 }
