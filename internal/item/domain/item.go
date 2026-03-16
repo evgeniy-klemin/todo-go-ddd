@@ -6,8 +6,8 @@ import (
 )
 
 var (
-	ErrNameLength    = fmt.Errorf("name has wrong size")
-	ErrPositionValue = fmt.Errorf("position has wrong value")
+	ErrNameLength    = fmt.Errorf("name length out of range")
+	ErrPositionValue = fmt.Errorf("position value out of range")
 	ErrNotFound      = fmt.Errorf("item not found")
 )
 
@@ -104,7 +104,7 @@ func (i *Item) Complete() {
 	i.done = true
 }
 
-func (i *Item) Uncomplete() {
+func (i *Item) Reopen() {
 	i.done = false
 }
 

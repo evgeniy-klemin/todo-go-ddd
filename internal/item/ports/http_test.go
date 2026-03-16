@@ -13,6 +13,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/evgeniy-klemin/todo/internal/item/app"
+	"github.com/evgeniy-klemin/todo/internal/item/domain"
 )
 
 func testTime() time.Time {
@@ -85,7 +86,7 @@ func TestPostItems_Returns201OnSuccess(t *testing.T) {
 func TestPostItems_InvalidName_Returns422(t *testing.T) {
 	svc := &mockService{
 		createFn: func(_ context.Context, name string, position *int) (*app.Item, error) {
-			return nil, app.Validation("create item", fmt.Errorf("name has wrong size"))
+			return nil, app.Validation("create item", domain.ErrNameLength)
 		},
 	}
 
