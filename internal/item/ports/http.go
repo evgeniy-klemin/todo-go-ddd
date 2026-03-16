@@ -95,7 +95,7 @@ func buildListQuery(params GetItemsParams) (app.ListQuery, error) {
 	}, nil
 }
 
-// Create New User
+// Create New Item
 // (POST /items)
 func (h *HttpServer) PostItems(ctx echo.Context) error {
 	var itemPost ItemPost
