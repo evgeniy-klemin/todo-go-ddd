@@ -47,6 +47,7 @@ func NewHttpServer(itemService ItemService) *HttpServer {
 	}
 }
 
+// List Items
 // (GET /items)
 func (h *HttpServer) GetItems(ctx echo.Context, params GetItemsParams) error {
 	query, err := buildListQuery(params)
