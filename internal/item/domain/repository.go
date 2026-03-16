@@ -2,6 +2,7 @@ package domain
 
 import "context"
 
+// SortDirection indicates the ordering direction for list queries.
 type SortDirection int
 
 const (
@@ -9,16 +10,19 @@ const (
 	SortDesc
 )
 
+// SortField specifies a field and its ordering direction for list queries.
 type SortField struct {
 	Field     string
 	Direction SortDirection
 }
 
+// ListFilter holds optional filter criteria for narrowing list query results.
 type ListFilter struct {
 	Done   *bool
 	Search *string
 }
 
+// Repository defines the persistence interface for Item aggregates.
 type Repository interface {
 	GetByID(ctx context.Context, id ModelID) (*Item, error)
 	Add(ctx context.Context, item *Item) (*Item, error)

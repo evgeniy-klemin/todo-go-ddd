@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+// Domain errors returned by item operations.
 var (
 	ErrNameLength    = fmt.Errorf("name has wrong size")
 	ErrPositionValue = fmt.Errorf("position has wrong value")

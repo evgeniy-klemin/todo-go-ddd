@@ -6,6 +6,7 @@ import (
 	"github.com/gofrs/uuid"
 )
 
+// ModelID is a value object wrapping a UUID string that uniquely identifies a domain entity.
 type ModelID struct {
 	value string
 }
