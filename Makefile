@@ -1,4 +1,4 @@
-.PHONY: run run-mysql test test-integration test-e2e generate lint
+.PHONY: run run-mysql test test-integration test-e2e generate lint lint-gopls
 
 DOCKER_COMPOSE := $(shell command -v docker-compose 2>/dev/null || echo "docker compose")
 
@@ -39,3 +39,6 @@ $(GOLANGCI_LINT):
 
 lint: $(GOLANGCI_LINT)
 	$(GOLANGCI_LINT) run ./...
+
+lint-gopls:
+	gopls check $$(find . -name "*.go" -not -path "./frontend/*" | tr '\n' ' ')
