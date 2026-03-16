@@ -25,15 +25,16 @@ tracking:
 
 teammate_idle:
   - match: DEVELOPING
+    agent: "developer*"
     checks:
       - type: command_ran
-        key: lint
+        category: lint
         message: "Developer must run lint before going idle — run 'make lint'."
       - type: command_ran
-        key: test
+        category: test
         message: "Developer must run test before going idle — run 'make test' or equivalent."
       - type: command_ran
-        key: test-e2e
+        category: test-e2e
         message: "Developer must run test-e2e before going idle — run 'make test-e2e' or equivalent."
 
   - match: REVIEWING
