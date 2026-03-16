@@ -37,7 +37,7 @@ func registerDoc(e *echo.Echo) {
 func setOapiValidator(e *echo.Echo) {
 	itemSwagger, err := itemports.GetSwagger()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading swagger spec\n: %s", err)
+		fmt.Fprintf(os.Stderr, "Error loading swagger spec: %s\n", err)
 		os.Exit(1)
 	}
 	itemSwagger.Servers = nil
