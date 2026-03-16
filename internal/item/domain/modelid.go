@@ -22,7 +22,7 @@ func GenerateModelID() (ModelID, error) {
 	if err != nil {
 		return ModelID{}, fmt.Errorf("invalid generate uuid: %w", err)
 	}
-	return ModelID{fmt.Sprintf("%s", id)}, nil
+	return ModelID{id.String()}, nil
 }
 
 func (m *ModelID) IsZero() bool {

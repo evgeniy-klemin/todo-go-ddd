@@ -1,11 +1,11 @@
 package ports
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/evgeniy-klemin/todo/internal/item/app"
-	"github.com/pkg/errors"
 )
 
 func appItemsToRespItems(appItems []app.Item) []ItemResponse {
@@ -59,7 +59,7 @@ func getAppFieldsFromGetParam(fields *string) ([]app.ItemField, error) {
 				case "created_at":
 					field = app.ItemFieldCreatedAt
 				default:
-					return nil, errors.Errorf("Field %s not found", strField)
+					return nil, fmt.Errorf("field %s not found", strField)
 				}
 				res = append(res, field)
 			}
@@ -93,7 +93,7 @@ func getSortFieldsFromGetParam(sort *string) (app.SortFields, error) {
 				case "created_at":
 					field = app.ItemFieldCreatedAt
 				default:
-					return nil, errors.Errorf("Field %s not found", strField)
+					return nil, fmt.Errorf("field %s not found", strField)
 				}
 				sortFields = append(sortFields, app.SortField{
 					Field:         field,
