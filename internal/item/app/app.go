@@ -99,7 +99,7 @@ func (s *ItemService) Update(ctx context.Context, reqItem *Item) (*Item, error) 
 			if *reqItem.Done {
 				item.Complete()
 			} else {
-				item.Uncomplete()
+				item.Reopen()
 			}
 		}
 		if reqItem.Position != nil {

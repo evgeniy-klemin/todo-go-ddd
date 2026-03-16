@@ -145,15 +145,15 @@ func TestItem_Complete(t *testing.T) {
 	}
 }
 
-func TestItem_Uncomplete(t *testing.T) {
+func TestItem_Reopen(t *testing.T) {
 	item, _ := NewItem("Task", 1)
 	item.Complete()
 	if !item.Done() {
 		t.Fatal("item should be done after Complete()")
 	}
-	item.Uncomplete()
+	item.Reopen()
 	if item.Done() {
-		t.Error("item should not be done after Uncomplete()")
+		t.Error("item should not be done after Reopen()")
 	}
 }
 

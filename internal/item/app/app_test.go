@@ -233,7 +233,7 @@ func TestUpdate_SetDoneTrue_CallsComplete(t *testing.T) {
 	}
 }
 
-func TestUpdate_SetDoneFalse_CallsUncomplete(t *testing.T) {
+func TestUpdate_SetDoneFalse_CallsReopen(t *testing.T) {
 	id, _ := domain.NewModelID("00000000-0000-0000-0000-000000000001")
 	domainRepo := &mockDomainRepository{
 		updateFn: func(_ context.Context, _ domain.ModelID, updater func(*domain.Item) error) (*domain.Item, error) {
