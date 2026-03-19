@@ -223,3 +223,67 @@ func TestE2E_CreateAndSearchImmediately(t *testing.T) {
 		t.Errorf("expected 1 result for 'alpha' immediately after creation, got %d", len(items))
 	}
 }
+
+// getItemsRaw sends a GET /items request and returns both items and the recorder
+// so callers can inspect response headers like X-Total-Count.
+func getItemsRaw(t *testing.T, e *echo.Echo, queryString string) ([]ports.ItemResponse, *httptest.ResponseRecorder) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/items?"+queryString, nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("getItemsRaw(%q): expected 200, got %d: %s", queryString, rec.Code, rec.Body.String())
+	}
+	var items []ports.ItemResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &items); err != nil {
+		t.Fatalf("getItemsRaw(%q): unmarshal: %v", queryString, err)
+	}
+	return items, rec
+}
+
+func TestE2E_TotalCountWithTextSearch(t *testing.T) {
+	e, db := setupE2EServer(t)
+	defer db.Close()
+
+	createItem(t, e, "buy groceries")
+	createItem(t, e, "buy milk")
+	createItem(t, e, "clean house")
+	createItem(t, e, "task report")
+	createItem(t, e, "task review")
+
+	// Test q=buy — should return 2 items with X-Total-Count=2
+	items, rec := getItemsRaw(t, e, "q=buy")
+	if len(items) != 2 {
+		t.Errorf("q=buy: expected 2 items, got %d", len(items))
+	}
+	if got := rec.Header().Get("X-Total-Count"); got != "2" {
+		t.Errorf("q=buy: expected X-Total-Count=2, got %q", got)
+	}
+
+	// Test q=task — should return 2 items with X-Total-Count=2
+	items, rec = getItemsRaw(t, e, "q=task")
+	if len(items) != 2 {
+		t.Errorf("q=task: expected 2 items, got %d", len(items))
+	}
+	if got := rec.Header().Get("X-Total-Count"); got != "2" {
+		t.Errorf("q=task: expected X-Total-Count=2, got %q", got)
+	}
+
+	// Test q=nonexistent — should return empty list with X-Total-Count=0
+	items, rec = getItemsRaw(t, e, "q=nonexistent")
+	if len(items) != 0 {
+		t.Errorf("q=nonexistent: expected 0 items, got %d", len(items))
+	}
+	if got := rec.Header().Get("X-Total-Count"); got != "0" {
+		t.Errorf("q=nonexistent: expected X-Total-Count=0, got %q", got)
+	}
+
+	// Test q=buy&_per_page=1 — should return 1 item but X-Total-Count=2 (filtered total)
+	items, rec = getItemsRaw(t, e, "q=buy&_per_page=1")
+	if len(items) != 1 {
+		t.Errorf("q=buy&_per_page=1: expected 1 item, got %d", len(items))
+	}
+	if got := rec.Header().Get("X-Total-Count"); got != "2" {
+		t.Errorf("q=buy&_per_page=1: expected X-Total-Count=2, got %q", got)
+	}
+}
