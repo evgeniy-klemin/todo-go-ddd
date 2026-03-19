@@ -3,58 +3,26 @@ package ports
 import (
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 )
 
-type LinkType int
+func cursorLinks(req *http.Request, perPage int, hasNext bool, nextCursorEncoded string) string {
+	var parts []string
 
-const (
-	LinkTypePrev LinkType = iota + 1
-	LinkTypeNext
-	LinkTypeFirst
-	LinkTypeLast
-)
-
-type Link struct {
-	req       *http.Request
-	paginator *Paginator
-}
-
-func (l *Link) Encode(linkType LinkType) string {
-	query := l.req.URL.Query()
-	var rel string
-	switch linkType {
-	case LinkTypeNext:
-		query.Set("page", strconv.Itoa(l.paginator.Next()))
-		rel = "next"
-	case LinkTypePrev:
-		query.Set("page", strconv.Itoa(l.paginator.Prev()))
-		rel = "prev"
-	case LinkTypeFirst:
-		query.Set("page", strconv.Itoa(l.paginator.First()))
-		rel = "first"
-	case LinkTypeLast:
-		query.Set("page", strconv.Itoa(l.paginator.Last()))
-		rel = "last"
+	if hasNext {
+		q := req.URL.Query()
+		q.Set("_cursor", nextCursorEncoded)
+		parts = append(parts, fmt.Sprintf("<%s?%s>;rel=next", req.URL.Path, q.Encode()))
 	}
-	return fmt.Sprintf("<%s?%s>;rel=%s", l.req.URL.Path, query.Encode(), rel)
-}
 
-func links(req *http.Request, paginator *Paginator) string {
-	links := make([]string, 0)
-	link := Link{
-		paginator: paginator,
-		req:       req,
+	// rel=first — no cursor param
+	q := req.URL.Query()
+	q.Del("_cursor")
+	firstURL := req.URL.Path
+	if encoded := q.Encode(); encoded != "" {
+		firstURL += "?" + encoded
 	}
-	if paginator.HasNext() {
-		links = append(links, link.Encode(LinkTypeNext))
-	}
-	if paginator.HasPrev() {
-		links = append(links, link.Encode(LinkTypePrev))
-	}
-	links = append(links, link.Encode(LinkTypeFirst))
-	links = append(links, link.Encode(LinkTypeLast))
+	parts = append(parts, fmt.Sprintf("<%s>;rel=first", firstURL))
 
-	return strings.Join(links, ",")
+	return strings.Join(parts, ",")
 }

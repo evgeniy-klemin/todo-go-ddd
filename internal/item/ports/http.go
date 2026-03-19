@@ -32,35 +32,52 @@ func (h *HttpServer) GetItems(ctx echo.Context, params GetItemsParams) error {
 	if params.PerPage != nil {
 		perPage = int(*params.PerPage)
 	}
-	page := 1
-	if params.Page != nil {
-		page = int(*params.Page)
-	}
 	sortFields, err := getSortFieldsFromGetParam(params.Sort)
 	if err != nil {
 		return err
 	}
+	if len(sortFields) == 0 {
+		sortFields = app.SortFields{{Field: app.ItemFieldPosition, SortDirection: app.SortDirectionAsc}}
+	}
 
-	count, err := h.itemService.Count(ctx.Request().Context(), params.Done)
+	var cursor *app.Cursor
+	if params.Cursor != nil && *params.Cursor != "" {
+		cursor, err = app.DecodeCursor(string(*params.Cursor))
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid cursor")
+		}
+	}
+
+	items, err := h.itemService.All(ctx.Request().Context(), params.Done, fields, perPage+1, cursor, sortFields)
 	if err != nil {
 		ctx.Error(err)
 		return err
 	}
-	items, err := h.itemService.All(ctx.Request().Context(), params.Done, fields, page, perPage, sortFields)
-	if err != nil {
-		ctx.Error(err)
-		return err
+
+	hasNext := len(items) > perPage
+	if hasNext {
+		items = items[:perPage]
 	}
 
-	paginator := NewPaginator(page, perPage, count)
+	var nextCursorEncoded string
+	if hasNext && len(items) > 0 {
+		lastItem := items[len(items)-1]
+		nextCursor := app.BuildCursorFromItem(lastItem, sortFields)
+		nextCursorEncoded, err = app.EncodeCursor(nextCursor)
+		if err != nil {
+			ctx.Error(err)
+			return err
+		}
+	}
 
 	respItems := appItemsToRespItems(items)
-	ctx.Response().Header().Set("X-Page", strconv.Itoa(page))
 	ctx.Response().Header().Set("X-Per-Page", strconv.Itoa(perPage))
-	ctx.Response().Header().Set("X-Total-Count", strconv.Itoa(count))
-	ctx.Response().Header().Set("Link", links(ctx.Request(), paginator))
+	if hasNext {
+		ctx.Response().Header().Set("X-Next-Cursor", nextCursorEncoded)
+	}
+	ctx.Response().Header().Set("Link", cursorLinks(ctx.Request(), perPage, hasNext, nextCursorEncoded))
 
-	return ctx.JSON(http.StatusCreated, respItems)
+	return ctx.JSON(http.StatusOK, respItems)
 }
 
 // Create New User

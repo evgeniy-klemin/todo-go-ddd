@@ -48,8 +48,8 @@ type ItemResponse struct {
 // Todo items
 type ItemsResponse []ItemResponse
 
-// Page defines model for _page.
-type Page int
+// Cursor defines model for _cursor.
+type Cursor string
 
 // PerPage defines model for _per_page.
 type PerPage int
@@ -65,8 +65,8 @@ type GetItemsParams struct {
 	// Count items per page
 	PerPage *PerPage `json:"_per_page,omitempty"`
 
-	// Page number
-	Page *Page `json:"_page,omitempty"`
+	// Opaque cursor for forward pagination. Omit for first page.
+	Cursor *Cursor `json:"_cursor,omitempty"`
 
 	// Sort by fields
 	Sort *string `json:"_sort,omitempty"`
