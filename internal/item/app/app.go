@@ -32,7 +32,7 @@ func (s *ItemService) Create(ctx context.Context, name string, position *int) (*
 	if position != nil {
 		positionVal = *position
 	} else {
-		items, err := s.appRepository.All(ctx, nil, []ItemField{ItemFieldPosition}, 1, 1, SortFields{SortField{Field: ItemFieldPosition, SortDirection: SortDirectionDesc}})
+		items, err := s.appRepository.All(ctx, nil, []ItemField{ItemFieldPosition}, 1, nil, SortFields{SortField{Field: ItemFieldPosition, SortDirection: SortDirectionDesc}})
 		if err != nil {
 			return nil, err
 		}
@@ -62,12 +62,8 @@ func (s *ItemService) Create(ctx context.Context, name string, position *int) (*
 	return s.domainRepository.Add(ctx, item)
 }
 
-func (s *ItemService) All(ctx context.Context, done *bool, fields []ItemField, page, perPage int, sortFields SortFields) ([]Item, error) {
-	return s.appRepository.All(ctx, done, fields, page, perPage, sortFields)
-}
-
-func (s *ItemService) Count(ctx context.Context, done *bool) (int, error) {
-	return s.appRepository.Count(ctx, done)
+func (s *ItemService) All(ctx context.Context, done *bool, fields []ItemField, limit int, cursor *Cursor, sortFields SortFields) ([]Item, error) {
+	return s.appRepository.All(ctx, done, fields, limit, cursor, sortFields)
 }
 
 func (s *ItemService) Update(ctx context.Context, reqItem *Item) (*domain.Item, error) {
