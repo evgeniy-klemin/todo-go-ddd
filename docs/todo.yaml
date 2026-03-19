@@ -167,6 +167,10 @@ paths:
               schema:
                 type: string
               description: Count items per page
+            X-Total-Count:
+              schema:
+                type: string
+              description: Total count of items matching the filter
             X-Next-Cursor:
               schema:
                 type: string

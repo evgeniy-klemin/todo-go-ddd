@@ -1,40 +1,18 @@
 package app
 
 import (
-	"encoding/base64"
-	"encoding/json"
+	"github.com/evgeniy-klemin/todo/internal/pagination"
 )
 
-type CursorValue struct {
-	Field     string      `json:"f"`
-	Value     interface{} `json:"v"`
-	Direction string      `json:"d"`
-}
+// Cursor and CursorValue are type aliases from the pagination package.
+type Cursor = pagination.Cursor
+type CursorValue = pagination.CursorValue
 
-type Cursor struct {
-	Values []CursorValue `json:"v"`
-	ID     string        `json:"id"`
-}
+// EncodeCursor encodes a cursor to a base64 string.
+var EncodeCursor = pagination.EncodeCursor
 
-func EncodeCursor(c *Cursor) (string, error) {
-	data, err := json.Marshal(c)
-	if err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(data), nil
-}
-
-func DecodeCursor(s string) (*Cursor, error) {
-	data, err := base64.RawURLEncoding.DecodeString(s)
-	if err != nil {
-		return nil, err
-	}
-	var c Cursor
-	if err := json.Unmarshal(data, &c); err != nil {
-		return nil, err
-	}
-	return &c, nil
-}
+// DecodeCursor decodes a cursor from a base64 string.
+var DecodeCursor = pagination.DecodeCursor
 
 func BuildCursorFromItem(item Item, sortFields SortFields) *Cursor {
 	var values []CursorValue

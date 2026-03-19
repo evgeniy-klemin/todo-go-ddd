@@ -66,6 +66,10 @@ func (s *ItemService) All(ctx context.Context, done *bool, fields []ItemField, l
 	return s.appRepository.All(ctx, done, fields, limit, cursor, sortFields)
 }
 
+func (s *ItemService) Count(ctx context.Context, done *bool) (int, error) {
+	return s.appRepository.Count(ctx, done)
+}
+
 func (s *ItemService) Update(ctx context.Context, reqItem *Item) (*domain.Item, error) {
 	modelID, err := domain.NewModelID(reqItem.ID)
 	if err != nil {

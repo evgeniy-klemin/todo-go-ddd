@@ -70,8 +70,15 @@ func (h *HttpServer) GetItems(ctx echo.Context, params GetItemsParams) error {
 		}
 	}
 
+	totalCount, err := h.itemService.Count(ctx.Request().Context(), params.Done)
+	if err != nil {
+		ctx.Error(err)
+		return err
+	}
+
 	respItems := appItemsToRespItems(items)
 	ctx.Response().Header().Set("X-Per-Page", strconv.Itoa(perPage))
+	ctx.Response().Header().Set("X-Total-Count", strconv.Itoa(totalCount))
 	if hasNext {
 		ctx.Response().Header().Set("X-Next-Cursor", nextCursorEncoded)
 	}

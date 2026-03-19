@@ -243,6 +243,18 @@ func buildCursorWhere(cursor *app.Cursor) (string, []interface{}) {
 	return strings.Join(terms, " OR "), args
 }
 
+func (r *Repository) Count(ctx context.Context, done *bool) (int, error) {
+	var query []qm.QueryMod
+	if done != nil {
+		query = append(query, qm.Where(models.ItemColumns.Done+"=?", *done))
+	}
+	count, err := models.Items(query...).Count(ctx, r.db)
+	if err != nil {
+		return 0, errors.WithStack(err)
+	}
+	return int(count), nil
+}
+
 func (r *Repository) Update(ctx context.Context, id domain.ModelID, updater func(item *domain.Item) error) (*domain.Item, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
