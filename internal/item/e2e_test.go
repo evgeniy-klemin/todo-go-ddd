@@ -158,20 +158,28 @@ func TestE2E_SearchWithPagination(t *testing.T) {
 	}
 	createItem(t, e, "Walk dog")
 
-	// Search for "task" with pagination: page 1, 2 per page
-	items := getItems(t, e, "q=task&_per_page=2&_page=1")
+	// Search for "task" with cursor pagination: 2 per page, first page
+	items, rec := getItemsRaw(t, e, "q=task&_per_page=2")
 	if len(items) != 2 {
 		t.Errorf("expected 2 results on page 1, got %d", len(items))
 	}
+	nextCursor := rec.Header().Get("X-Next-Cursor")
+	if nextCursor == "" {
+		t.Fatal("expected X-Next-Cursor header for page 1")
+	}
 
-	// Page 2
-	items = getItems(t, e, "q=task&_per_page=2&_page=2")
+	// Page 2 using cursor
+	items, rec = getItemsRaw(t, e, "q=task&_per_page=2&_cursor="+url.QueryEscape(nextCursor))
 	if len(items) != 2 {
 		t.Errorf("expected 2 results on page 2, got %d", len(items))
 	}
+	nextCursor = rec.Header().Get("X-Next-Cursor")
+	if nextCursor == "" {
+		t.Fatal("expected X-Next-Cursor header for page 2")
+	}
 
 	// Page 3 — should have 1 remaining
-	items = getItems(t, e, "q=task&_per_page=2&_page=3")
+	items, _ = getItemsRaw(t, e, "q=task&_per_page=2&_cursor="+url.QueryEscape(nextCursor))
 	if len(items) != 1 {
 		t.Errorf("expected 1 result on page 3, got %d", len(items))
 	}

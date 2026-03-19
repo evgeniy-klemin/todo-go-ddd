@@ -66,31 +66,8 @@ func (s *ItemService) Create(ctx context.Context, name string, position *int) (*
 	return domainToAppItem(result, nil), nil
 }
 
-func (s *ItemService) List(ctx context.Context, query ListQuery) (ListResult, error) {
-	filter := domain.ListFilter{
-		Done:   query.Done,
-		Search: query.Search,
-	}
-	sortFields := appSortFieldsToDomain(query.SortFields)
-
-	count, err := s.repo.Count(ctx, filter)
-	if err != nil {
-		return ListResult{}, err
-	}
-	domainItems, err := s.repo.List(ctx, filter, sortFields, query.Page, query.PerPage)
-	if err != nil {
-		return ListResult{}, err
-	}
-
-	items := make([]Item, 0, len(domainItems))
-	for _, d := range domainItems {
-		items = append(items, *domainToAppItem(d, query.Fields))
-	}
-	return ListResult{Items: items, TotalCount: count}, nil
-}
-
-func (s *ItemService) All(ctx context.Context, done *bool, fields []ItemField, limit int, cursor *Cursor, sortFields SortFields) ([]Item, error) {
-	filter := domain.ListFilter{Done: done}
+func (s *ItemService) All(ctx context.Context, done *bool, search *string, fields []ItemField, limit int, cursor *Cursor, sortFields SortFields) ([]Item, error) {
+	filter := domain.ListFilter{Done: done, Search: search}
 	domainSort := appSortFieldsToDomain(sortFields)
 	domainItems, err := s.repo.ListWithCursor(ctx, filter, domainSort, limit, cursor)
 	if err != nil {
@@ -103,8 +80,8 @@ func (s *ItemService) All(ctx context.Context, done *bool, fields []ItemField, l
 	return items, nil
 }
 
-func (s *ItemService) Count(ctx context.Context, done *bool) (int, error) {
-	filter := domain.ListFilter{Done: done}
+func (s *ItemService) Count(ctx context.Context, done *bool, search *string) (int, error) {
+	filter := domain.ListFilter{Done: done, Search: search}
 	return s.repo.Count(ctx, filter)
 }
 

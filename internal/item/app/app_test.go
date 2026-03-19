@@ -266,25 +266,18 @@ func TestUpdate_SetDoneFalse_CallsReopen(t *testing.T) {
 	}
 }
 
-func TestList_PassesSearchToRepository(t *testing.T) {
+func TestAll_PassesSearchToRepository(t *testing.T) {
 	var capturedSearch *string
 	domainRepo := &mockDomainRepository{
-		listFn: func(_ context.Context, filter domain.ListFilter, _ []domain.SortField, _, _ int) ([]*domain.Item, error) {
+		listWithCursorFn: func(_ context.Context, filter domain.ListFilter, _ []domain.SortField, _ int, _ *domain.Cursor) ([]*domain.Item, error) {
 			capturedSearch = filter.Search
 			return []*domain.Item{}, nil
-		},
-		countFn: func(_ context.Context, filter domain.ListFilter) (int, error) {
-			return 0, nil
 		},
 	}
 
 	svc := newService(domainRepo)
 	searchTerm := "buy"
-	_, err := svc.List(context.Background(), ListQuery{
-		Search:  &searchTerm,
-		Page:    1,
-		PerPage: 20,
-	})
+	_, err := svc.All(context.Background(), nil, &searchTerm, nil, 20, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -296,31 +289,25 @@ func TestList_PassesSearchToRepository(t *testing.T) {
 	}
 }
 
-func TestList_NilSearch_PassesNilToRepository(t *testing.T) {
+func TestAll_NilSearch_PassesNilToRepository(t *testing.T) {
 	searchChecked := false
 	domainRepo := &mockDomainRepository{
-		listFn: func(_ context.Context, filter domain.ListFilter, _ []domain.SortField, _, _ int) ([]*domain.Item, error) {
+		listWithCursorFn: func(_ context.Context, filter domain.ListFilter, _ []domain.SortField, _ int, _ *domain.Cursor) ([]*domain.Item, error) {
 			searchChecked = true
 			if filter.Search != nil {
 				t.Errorf("expected nil search, got '%s'", *filter.Search)
 			}
 			return []*domain.Item{}, nil
 		},
-		countFn: func(_ context.Context, filter domain.ListFilter) (int, error) {
-			return 0, nil
-		},
 	}
 
 	svc := newService(domainRepo)
-	_, err := svc.List(context.Background(), ListQuery{
-		Page:    1,
-		PerPage: 20,
-	})
+	_, err := svc.All(context.Background(), nil, nil, nil, 20, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !searchChecked {
-		t.Fatal("List was not called")
+		t.Fatal("All was not called")
 	}
 }
 

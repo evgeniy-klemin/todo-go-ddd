@@ -23,10 +23,9 @@ var errorStatusMap = map[error]int{
 type ItemService interface {
 	Create(ctx context.Context, name string, position *int) (*app.Item, error)
 	GetItemByID(ctx context.Context, id string) (*app.Item, error)
-	List(ctx context.Context, query app.ListQuery) (app.ListResult, error)
 	Update(ctx context.Context, reqItem *app.Item) (*app.Item, error)
-	All(ctx context.Context, done *bool, fields []app.ItemField, limit int, cursor *app.Cursor, sortFields app.SortFields) ([]app.Item, error)
-	Count(ctx context.Context, done *bool) (int, error)
+	All(ctx context.Context, done *bool, search *string, fields []app.ItemField, limit int, cursor *app.Cursor, sortFields app.SortFields) ([]app.Item, error)
+	Count(ctx context.Context, done *bool, search *string) (int, error)
 }
 
 func httpError(ctx echo.Context, err error) error {
@@ -68,21 +67,15 @@ func (h *HttpServer) GetItems(ctx echo.Context, params GetItemsParams) error {
 		perPage = int(*params.PerPage)
 	}
 
-	// Cursor-based pagination: used when _cursor param is present (no search support).
-	// Offset-based pagination: used otherwise (supports search via q param).
+	var cursor *app.Cursor
 	if params.Cursor != nil && *params.Cursor != "" {
-		return h.getItemsWithCursor(ctx, params, fields, sortFields, perPage)
-	}
-	return h.getItemsWithOffset(ctx, params, fields, sortFields, perPage)
-}
-
-func (h *HttpServer) getItemsWithCursor(ctx echo.Context, params GetItemsParams, fields []app.ItemField, sortFields app.SortFields, perPage int) error {
-	cursor, err := app.DecodeCursor(string(*params.Cursor))
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid cursor")
+		cursor, err = app.DecodeCursor(string(*params.Cursor))
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid cursor")
+		}
 	}
 
-	items, err := h.itemService.All(ctx.Request().Context(), params.Done, fields, perPage+1, cursor, sortFields)
+	items, err := h.itemService.All(ctx.Request().Context(), params.Done, params.Q, fields, perPage+1, cursor, sortFields)
 	if err != nil {
 		return httpError(ctx, err)
 	}
@@ -102,7 +95,7 @@ func (h *HttpServer) getItemsWithCursor(ctx echo.Context, params GetItemsParams,
 		}
 	}
 
-	totalCount, err := h.itemService.Count(ctx.Request().Context(), params.Done)
+	totalCount, err := h.itemService.Count(ctx.Request().Context(), params.Done, params.Q)
 	if err != nil {
 		return httpError(ctx, err)
 	}
@@ -116,36 +109,6 @@ func (h *HttpServer) getItemsWithCursor(ctx echo.Context, params GetItemsParams,
 	ctx.Response().Header().Set("Link", cursorLinks(ctx.Request(), perPage, hasNext, nextCursorEncoded))
 
 	return ctx.JSON(http.StatusOK, respItems)
-}
-
-func (h *HttpServer) getItemsWithOffset(ctx echo.Context, params GetItemsParams, fields []app.ItemField, sortFields app.SortFields, perPage int) error {
-	// Parse _page from raw query string since it's not in the OpenAPI spec (removed in master)
-	page := 1
-	if p := ctx.QueryParam("_page"); p != "" {
-		if v, err := strconv.Atoi(p); err == nil && v > 0 {
-			page = v
-		}
-	}
-
-	query := app.ListQuery{
-		Done:       params.Done,
-		Search:     params.Q,
-		Fields:     fields,
-		Page:       page,
-		PerPage:    perPage,
-		SortFields: sortFields,
-	}
-
-	result, err := h.itemService.List(ctx.Request().Context(), query)
-	if err != nil {
-		return httpError(ctx, err)
-	}
-
-	ctx.Response().Header().Set("X-Page", strconv.Itoa(query.Page))
-	ctx.Response().Header().Set("X-Per-Page", strconv.Itoa(query.PerPage))
-	ctx.Response().Header().Set("X-Total-Count", strconv.Itoa(result.TotalCount))
-
-	return ctx.JSON(http.StatusOK, appItemsToRespItems(result.Items))
 }
 
 // Create New User
