@@ -20,11 +20,7 @@ import (
 
 // ErrBadParams defines model for ErrBadParams.
 type ErrBadParams struct {
-	Fields *[]struct {
-		Field   *string `json:"field,omitempty"`
-		Message *string `json:"message,omitempty"`
-	} `json:"fields,omitempty"`
-	Message *string `json:"message,omitempty"`
+	Error string `json:"error"`
 }
 
 // ItemPatch defines model for ItemPatch.
@@ -68,9 +64,6 @@ type PerPage int
 // ItemId defines model for item_id.
 type ItemId string
 
-// GetItemsJSONBody defines parameters for GetItems.
-type GetItemsJSONBody map[string]interface{}
-
 // GetItemsParams defines parameters for GetItems.
 type GetItemsParams struct {
 	// Count items per page
@@ -87,6 +80,9 @@ type GetItemsParams struct {
 
 	// Filter by done
 	Done *bool `json:"done,omitempty"`
+
+	// Search by name
+	Q *string `json:"q,omitempty"`
 }
 
 // PostItemsJSONBody defines parameters for PostItems.
@@ -94,9 +90,6 @@ type PostItemsJSONBody ItemPost
 
 // PatchItemsItemidJSONBody defines parameters for PatchItemsItemid.
 type PatchItemsItemidJSONBody ItemPatch
-
-// GetItemsJSONRequestBody defines body for GetItems for application/json ContentType.
-type GetItemsJSONRequestBody GetItemsJSONBody
 
 // PostItemsJSONRequestBody defines body for PostItems for application/json ContentType.
 type PostItemsJSONRequestBody PostItemsJSONBody
@@ -177,10 +170,8 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
-	// GetItems request with any body
-	GetItemsWithBody(ctx context.Context, params *GetItemsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	GetItems(ctx context.Context, params *GetItemsParams, body GetItemsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetItems request
+	GetItems(ctx context.Context, params *GetItemsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostItems request with any body
 	PostItemsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -196,20 +187,8 @@ type ClientInterface interface {
 	PatchItemsItemid(ctx context.Context, itemId ItemId, body PatchItemsItemidJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
-func (c *Client) GetItemsWithBody(ctx context.Context, params *GetItemsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetItemsRequestWithBody(c.Server, params, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) GetItems(ctx context.Context, params *GetItemsParams, body GetItemsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetItemsRequest(c.Server, params, body)
+func (c *Client) GetItems(ctx context.Context, params *GetItemsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetItemsRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -280,19 +259,8 @@ func (c *Client) PatchItemsItemid(ctx context.Context, itemId ItemId, body Patch
 	return c.Client.Do(req)
 }
 
-// NewGetItemsRequest calls the generic GetItems builder with application/json body
-func NewGetItemsRequest(server string, params *GetItemsParams, body GetItemsJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewGetItemsRequestWithBody(server, params, "application/json", bodyReader)
-}
-
-// NewGetItemsRequestWithBody generates requests for GetItems with any type of body
-func NewGetItemsRequestWithBody(server string, params *GetItemsParams, contentType string, body io.Reader) (*http.Request, error) {
+// NewGetItemsRequest generates requests for GetItems
+func NewGetItemsRequest(server string, params *GetItemsParams) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -392,14 +360,28 @@ func NewGetItemsRequestWithBody(server string, params *GetItemsParams, contentTy
 
 	}
 
+	if params.Q != nil {
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "q", runtime.ParamLocationQuery, *params.Q); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+	}
+
 	queryURL.RawQuery = queryValues.Encode()
 
-	req, err := http.NewRequest("GET", queryURL.String(), body)
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
-
-	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -568,10 +550,8 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
-	// GetItems request with any body
-	GetItemsWithBodyWithResponse(ctx context.Context, params *GetItemsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*GetItemsResponse, error)
-
-	GetItemsWithResponse(ctx context.Context, params *GetItemsParams, body GetItemsJSONRequestBody, reqEditors ...RequestEditorFn) (*GetItemsResponse, error)
+	// GetItems request
+	GetItemsWithResponse(ctx context.Context, params *GetItemsParams, reqEditors ...RequestEditorFn) (*GetItemsResponse, error)
 
 	// PostItems request with any body
 	PostItemsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostItemsResponse, error)
@@ -613,7 +593,7 @@ type PostItemsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON201      *ItemResponse
-	JSON400      *ErrBadParams
+	JSON422      *ErrBadParams
 }
 
 // Status returns HTTPResponse.Status
@@ -676,17 +656,9 @@ func (r PatchItemsItemidResponse) StatusCode() int {
 	return 0
 }
 
-// GetItemsWithBodyWithResponse request with arbitrary body returning *GetItemsResponse
-func (c *ClientWithResponses) GetItemsWithBodyWithResponse(ctx context.Context, params *GetItemsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*GetItemsResponse, error) {
-	rsp, err := c.GetItemsWithBody(ctx, params, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetItemsResponse(rsp)
-}
-
-func (c *ClientWithResponses) GetItemsWithResponse(ctx context.Context, params *GetItemsParams, body GetItemsJSONRequestBody, reqEditors ...RequestEditorFn) (*GetItemsResponse, error) {
-	rsp, err := c.GetItems(ctx, params, body, reqEditors...)
+// GetItemsWithResponse request returning *GetItemsResponse
+func (c *ClientWithResponses) GetItemsWithResponse(ctx context.Context, params *GetItemsParams, reqEditors ...RequestEditorFn) (*GetItemsResponse, error) {
+	rsp, err := c.GetItems(ctx, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -783,12 +755,12 @@ func ParsePostItemsResponse(rsp *http.Response) (*PostItemsResponse, error) {
 		}
 		response.JSON201 = &dest
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrBadParams
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON400 = &dest
+		response.JSON422 = &dest
 
 	}
 

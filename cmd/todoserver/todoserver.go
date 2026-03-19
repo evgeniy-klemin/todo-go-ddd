@@ -6,16 +6,17 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/go-testfixtures/testfixtures/v3"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/evgeniy-klemin/todo"
+	"github.com/evgeniy-klemin/todo/db/driver"
+	"github.com/evgeniy-klemin/todo/db/fts"
+	"github.com/evgeniy-klemin/todo/db/migrations"
 	item "github.com/evgeniy-klemin/todo/internal/item"
 	itemports "github.com/evgeniy-klemin/todo/internal/item/ports"
 )
@@ -58,17 +59,45 @@ func server(port int) {
 	// Swagger validation
 	setOapiValidator(e)
 
-	// db, err := sql.Open("sqlite3", "file:todotest.db?cache=shared")
-	db, err := sql.Open("mysql", "todo:todo@tcp(localhost)/todotest?parseTime=true")
+	drv := os.Getenv("DB_DRIVER")
+	if drv == "" {
+		drv = driver.SQLite
+	}
+
+	dsn := os.Getenv("DB_DSN")
+	if dsn == "" {
+		switch drv {
+		case driver.MySQL:
+			dsn = "todo:todo@tcp(localhost)/todotest?parseTime=true"
+		default:
+			dsn = "file:todotest.db?cache=shared"
+		}
+	}
+
+	db, err := sql.Open(drv, dsn)
 	if err != nil {
 		panic(err)
 	}
-	db.SetConnMaxLifetime(time.Minute * 3)
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(10)
+	if err := migrations.Run(db, drv); err != nil {
+		panic(err)
+	}
+	var ftsEnabled bool
+	if drv == driver.MySQL {
+		ftsEnabled = true // FULLTEXT index created by goose migration 00003
+	} else {
+		ftsEnabled = fts.Apply(db)
+	}
+	if !ftsEnabled {
+		switch drv {
+		case driver.MySQL:
+			fmt.Fprintf(os.Stderr, "Warning: MySQL FULLTEXT index not available, falling back to LIKE search\n")
+		default:
+			fmt.Fprintf(os.Stderr, "Warning: FTS5 not available, falling back to LIKE search\n")
+		}
+	}
 
 	// Containers
-	itemContainer := item.NewContainer(db)
+	itemContainer := item.NewContainer(db, drv, ftsEnabled)
 
 	// Register http handlers
 	itemContainer.RegisterHandlers(e)
@@ -78,29 +107,9 @@ func server(port int) {
 	e.Logger.Fatal(e.Start(fmt.Sprintf("0.0.0.0:%d", port)))
 }
 
-func fixtures() {
-	// db, err := sql.Open("sqlite3", "file:todotest.db?cache=shared")
-	db, err := sql.Open("mysql", "todo:todo@tcp(localhost)/todotest")
-	if err != nil {
-		panic(err)
-	}
-	f, err := testfixtures.New(
-		testfixtures.Database(db),
-		testfixtures.Dialect("mysql"),
-		testfixtures.Directory("db/fixtures"),
-	)
-	if err != nil {
-		panic(err)
-	}
-	if err := f.Load(); err != nil {
-		panic(err)
-	}
-}
-
 func main() {
-	var port = flag.Int("port", 8080, "Port for test HTTP server")
+	var port = flag.Int("port", 3000, "Port for test HTTP server")
 	flag.Parse()
 
-	fixtures()
 	server(*port)
 }

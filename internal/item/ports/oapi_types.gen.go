@@ -9,11 +9,7 @@ import (
 
 // ErrBadParams defines model for ErrBadParams.
 type ErrBadParams struct {
-	Fields *[]struct {
-		Field   *string `json:"field,omitempty"`
-		Message *string `json:"message,omitempty"`
-	} `json:"fields,omitempty"`
-	Message *string `json:"message,omitempty"`
+	Error string `json:"error"`
 }
 
 // ItemPatch defines model for ItemPatch.
@@ -73,6 +69,9 @@ type GetItemsParams struct {
 
 	// Filter by done
 	Done *bool `json:"done,omitempty"`
+
+	// Search by name
+	Q *string `json:"q,omitempty"`
 }
 
 // PostItemsJSONBody defines parameters for PostItems.

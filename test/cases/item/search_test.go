@@ -1,0 +1,120 @@
+package item
+
+import (
+	"context"
+	"fmt"
+	"testing"
+
+	"github.com/stretchr/testify/suite"
+
+	"github.com/evgeniy-klemin/todo/internal/item/domain"
+	"github.com/evgeniy-klemin/todo/internal/item/repository"
+	"github.com/evgeniy-klemin/todo/test/setup"
+)
+
+type SearchSuite struct {
+	setup.MySQLSuite
+}
+
+func TestSearch(t *testing.T) {
+	suite.Run(t, new(SearchSuite))
+}
+
+func (s *SearchSuite) insertItems(names ...string) {
+	ctx := context.Background()
+	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
+	for _, name := range names {
+		item, err := domain.NewItem(name, 1)
+		s.Require().NoError(err)
+		_, err = repo.AddWithNextPosition(ctx, item)
+		s.Require().NoError(err)
+	}
+}
+
+func (s *SearchSuite) TestExactWordMatch() {
+	s.insertItems("Buy milk", "Buy eggs", "Walk the dog")
+	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
+
+	search := "buy"
+	items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
+	s.Require().NoError(err)
+	s.Equal(2, len(items), "expected 2 items matching 'buy'")
+}
+
+func (s *SearchSuite) TestPrefixMatch() {
+	s.insertItems("Buying groceries", "Buy milk", "Walk the dog")
+	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
+
+	search := "buy"
+	items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
+	s.Require().NoError(err)
+	s.Equal(2, len(items), "expected 2 items matching prefix 'buy'")
+}
+
+func (s *SearchSuite) TestCaseInsensitive() {
+	s.insertItems("Buy Milk")
+	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
+
+	search := "buy"
+	items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
+	s.Require().NoError(err)
+	s.Equal(1, len(items))
+}
+
+func (s *SearchSuite) TestMultipleWords() {
+	s.insertItems("Buy milk and eggs", "Buy bread", "Get milk")
+	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
+
+	search := "buy milk"
+	items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
+	s.Require().NoError(err)
+	s.Equal(1, len(items), "expected 1 item matching both 'buy' AND 'milk'")
+}
+
+func (s *SearchSuite) TestNoResults() {
+	s.insertItems("Buy milk")
+	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
+
+	search := "xyz"
+	items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
+	s.Require().NoError(err)
+	s.Equal(0, len(items))
+}
+
+func (s *SearchSuite) TestNilSearchReturnsAll() {
+	s.insertItems("Task 1", "Task 2", "Task 3")
+	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
+
+	items, err := repo.List(context.Background(), domain.ListFilter{}, nil, 1, 20)
+	s.Require().NoError(err)
+	s.Equal(3, len(items))
+}
+
+func (s *SearchSuite) TestSearchWithPagination() {
+	for i := 1; i <= 5; i++ {
+		s.insertItems(fmt.Sprintf("Task item %d", i))
+	}
+	s.insertItems("Walk dog")
+	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
+
+	search := "task"
+	// Page 1
+	items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 2)
+	s.Require().NoError(err)
+	s.Equal(2, len(items))
+
+	// Page 3 — 1 remaining
+	items, err = repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 3, 2)
+	s.Require().NoError(err)
+	s.Equal(1, len(items))
+}
+
+func (s *SearchSuite) TestCountWithSearch() {
+	s.insertItems("Buy milk", "Buy eggs", "Walk the dog")
+	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
+
+	search := "buy"
+	count, err := repo.Count(context.Background(), domain.ListFilter{Search: &search})
+	s.Require().NoError(err)
+	s.Equal(2, count)
+}

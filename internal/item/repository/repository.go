@@ -3,197 +3,233 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
-	"github.com/pkg/errors"
-	"github.com/volatiletech/sqlboiler/v4/boil"
-	"github.com/volatiletech/sqlboiler/v4/queries/qm"
-
-	"github.com/evgeniy-klemin/todo/internal/item/app"
 	"github.com/evgeniy-klemin/todo/internal/item/domain"
-	"github.com/evgeniy-klemin/todo/internal/item/repository/models"
 )
 
 type Repository struct {
 	db *sql.DB
+	q  querier
+	mu sync.Mutex
 }
 
-func New(db *sql.DB) *Repository {
+func NewSQLite(db *sql.DB, ftsEnabled bool) *Repository {
 	return &Repository{
 		db: db,
+		q:  newSQLiteAdapter(db, ftsEnabled),
 	}
+}
+
+func NewMySQL(db *sql.DB, ftsEnabled bool) *Repository {
+	return &Repository{
+		db: db,
+		q:  newMySQLAdapter(db, ftsEnabled),
+	}
+}
+
+func (r *Repository) maxPosition(ctx context.Context) (int, error) {
+	result, err := r.q.MaxPosition(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("max position query: %w", err)
+	}
+	return int(result), nil
+}
+
+func (r *Repository) AddWithNextPosition(ctx context.Context, item *domain.Item) (*domain.Item, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	max, err := r.maxPosition(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("max position: %w", err)
+	}
+
+	if err := item.MoveTo(max + 1); err != nil {
+		return nil, fmt.Errorf("move to position: %w", err)
+	}
+
+	return r.Add(ctx, item)
 }
 
 func (r *Repository) GetByID(ctx context.Context, id domain.ModelID) (*domain.Item, error) {
-	return r.getByID(ctx, id, false)
+	item, err := r.q.GetItemByID(ctx, id.String())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	return toDomainItem(item)
 }
 
-func (r *Repository) getByID(ctx context.Context, id domain.ModelID, forUpdate bool) (*domain.Item, error) {
-	var qms []qm.QueryMod
-	qms = append(qms, qm.Where(models.ItemColumns.ID+"=?", id.String()))
-	if forUpdate {
-		qms = append(qms, qm.For("UPDATE"))
-	}
-	item, err := models.Items(qms...).One(ctx, r.db)
+func (r *Repository) getByID(ctx context.Context, tx *sql.Tx, id domain.ModelID) (*domain.Item, error) {
+	txQ := r.q.WithTx(tx)
+	item, err := txQ.GetItemByID(ctx, id.String())
 	if err != nil {
-		return nil, errors.WithStack(err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
 	}
+	return toDomainItem(item)
+}
+
+// toDomainItem converts a dbItem to a domain.Item via ReconstituteItem.
+func toDomainItem(item dbItem) (*domain.Item, error) {
 	modelID, err := domain.NewModelID(item.ID)
 	if err != nil {
 		return nil, err
 	}
-	return &domain.Item{
-		ID:        modelID,
-		Name:      item.Name,
-		Position:  int(item.Position),
-		Done:      item.Done,
-		CreatedAt: item.CreatedAt,
-	}, nil
+	return domain.ReconstituteItem(modelID, item.Name, int(item.Position), item.Done, item.CreatedAt), nil
 }
 
 func (r *Repository) Add(ctx context.Context, item *domain.Item) (*domain.Item, error) {
-	dbItem := models.Item{
-		ID:        item.ID.String(),
-		Name:      item.Name,
-		Position:  item.Position,
-		Done:      item.Done,
-		CreatedAt: item.CreatedAt.UTC(),
+	id := item.ID()
+	err := r.q.InsertItem(
+		ctx,
+		id.String(),
+		item.Name().String(),
+		int64(item.Position().Int()),
+		item.Done(),
+		item.CreatedAt().UTC(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("insert item: %w", err)
 	}
-
-	if err := dbItem.Insert(ctx, r.db, boil.Infer()); err != nil {
-		return nil, errors.Wrap(err, "ошибка добавления в базу")
-	}
-
 	return item, nil
 }
 
-func (r *Repository) All(
+func (r *Repository) List(
 	ctx context.Context,
-	done *bool,
-	fields []app.ItemField,
-	limit int,
-	cursor *app.Cursor,
-	sortFields app.SortFields,
-) ([]app.Item, error) {
-	var columns []string
-	for _, field := range fields {
-		switch field {
-		case app.ItemFieldName:
-			columns = append(columns, models.ItemColumns.Name)
-		case app.ItemFieldPosition:
-			columns = append(columns, models.ItemColumns.Position)
-		case app.ItemFieldDone:
-			columns = append(columns, models.ItemColumns.Done)
-		case app.ItemFieldCreatedAt:
-			columns = append(columns, models.ItemColumns.CreatedAt)
-		default:
-			return nil, errors.Errorf("Field %d not found", field)
-		}
-	}
-	if len(columns) > 0 {
-		columns = append(columns, models.ItemColumns.ID)
+	filter domain.ListFilter,
+	sort []domain.SortField,
+	page, perPage int,
+) ([]*domain.Item, error) {
+	dbSort := make([]sortField, len(sort))
+	for i, s := range sort {
+		dbSort[i] = sortField{Field: s.Field, Desc: s.Direction == domain.SortDesc}
 	}
 
-	var orderBy []string
-	for _, sortField := range sortFields {
-		var order string
-		switch sortField.Field {
-		case app.ItemFieldName:
-			order = models.ItemColumns.Name
-		case app.ItemFieldPosition:
-			order = models.ItemColumns.Position
-		case app.ItemFieldDone:
-			order = models.ItemColumns.Done
-		case app.ItemFieldCreatedAt:
-			order = models.ItemColumns.CreatedAt
-		default:
-			return nil, errors.Errorf("Field %d not found", sortFields)
-		}
-		switch sortField.SortDirection {
-		case app.SortDirectionAsc:
-			order = order + " asc"
-		case app.SortDirectionDesc:
-			order = order + " desc"
-		}
-		orderBy = append(orderBy, order)
-	}
-	if len(orderBy) == 0 {
-		orderBy = append(orderBy, models.ItemColumns.Position+" asc")
-	}
-	// Always append id ASC as tie-breaker
-	orderBy = append(orderBy, models.ItemColumns.ID+" asc")
-
-	var query []qm.QueryMod
-
-	if done != nil {
-		query = append(query, qm.Where(models.ItemColumns.Done+"=?", *done))
-	}
-
-	if cursor != nil {
-		whereClause, args := buildCursorWhere(cursor)
-		if whereClause != "" {
-			query = append(query, qm.Where(whereClause, args...))
-		}
-	}
-
-	query = append(query, qm.Select(columns...))
-	query = append(query, qm.Limit(limit))
-	query = append(query, qm.OrderBy(strings.Join(orderBy, ", ")))
-
-	dbItems, err := models.Items(query...).All(ctx, r.db)
+	dbRows, err := r.q.ListItems(ctx, listFilter{Done: filter.Done, Search: filter.Search}, dbSort, perPage, perPage*(page-1))
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("query items: %w", err)
 	}
-	res := make([]app.Item, 0)
-	for _, dbItem := range dbItems {
-		item := app.Item{
-			ID: dbItem.ID,
+
+	res := make([]*domain.Item, 0, len(dbRows))
+	for _, dbRow := range dbRows {
+		domainItem, err := toDomainItem(dbRow)
+		if err != nil {
+			return nil, fmt.Errorf("convert item: %w", err)
 		}
-		if len(fields) == 0 {
-			fields = app.DefaultItemFields
-		}
-		for _, field := range fields {
-			switch field {
-			case app.ItemFieldName:
-				item.Name = &dbItem.Name
-			case app.ItemFieldPosition:
-				position := int(dbItem.Position)
-				item.Position = &position
-			case app.ItemFieldDone:
-				item.Done = &dbItem.Done
-			case app.ItemFieldCreatedAt:
-				item.CreatedAt = &dbItem.CreatedAt
-			default:
-				return nil, errors.Errorf("Field %d not found", field)
-			}
-		}
-		res = append(res, item)
+		res = append(res, domainItem)
 	}
 	return res, nil
+}
+
+// ListWithCursor fetches up to limit items starting after cursor (nil = from start).
+// It delegates cursor WHERE clause building to the adapter via ListItemsWithCursor.
+func (r *Repository) ListWithCursor(
+	ctx context.Context,
+	filter domain.ListFilter,
+	sort []domain.SortField,
+	limit int,
+	cursor *domain.Cursor,
+) ([]*domain.Item, error) {
+	dbSort := make([]sortField, len(sort))
+	for i, s := range sort {
+		dbSort[i] = sortField{Field: s.Field, Desc: s.Direction == domain.SortDesc}
+	}
+
+	var dbCursor *cursorParam
+	if cursor != nil {
+		dbCursor = &cursorParam{
+			Values: make([]cursorValue, len(cursor.Values)),
+			ID:     cursor.ID,
+		}
+		for i, cv := range cursor.Values {
+			dbCursor.Values[i] = cursorValue{
+				Field:     cv.Field,
+				Value:     cv.Value,
+				Direction: cv.Direction,
+			}
+		}
+	}
+
+	dbRows, err := r.q.ListItemsWithCursor(ctx, listFilter{Done: filter.Done, Search: filter.Search}, dbSort, limit, dbCursor)
+	if err != nil {
+		return nil, fmt.Errorf("query items with cursor: %w", err)
+	}
+
+	res := make([]*domain.Item, 0, len(dbRows))
+	for _, dbRow := range dbRows {
+		domainItem, err := toDomainItem(dbRow)
+		if err != nil {
+			return nil, fmt.Errorf("convert item: %w", err)
+		}
+		res = append(res, domainItem)
+	}
+	return res, nil
+}
+
+func (r *Repository) Count(ctx context.Context, filter domain.ListFilter) (int, error) {
+	count, err := r.q.CountItems(ctx, listFilter{Done: filter.Done, Search: filter.Search})
+	if err != nil {
+		return 0, fmt.Errorf("count items: %w", err)
+	}
+	return count, nil
+}
+
+func (r *Repository) Update(
+	ctx context.Context,
+	id domain.ModelID,
+	updater func(item *domain.Item) error,
+) (*domain.Item, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	domainItem, err := r.getByID(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := updater(domainItem); err != nil {
+		return nil, err
+	}
+
+	itemID := domainItem.ID()
+	txQ := r.q.WithTx(tx)
+	err = txQ.UpdateItem(
+		ctx,
+		domainItem.Name().String(),
+		int64(domainItem.Position().Int()),
+		domainItem.Done(),
+		itemID.String(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return domainItem, nil
 }
 
 // buildCursorWhere builds the expanded OR-form cursor WHERE clause.
 // For each sort field, it builds the prefix-equality + current-field comparison terms.
 // Finally, it adds an id tie-breaker term.
-func buildCursorWhere(cursor *app.Cursor) (string, []interface{}) {
+func buildCursorWhere(cursor *cursorParam) (string, []interface{}) {
 	if cursor == nil || len(cursor.Values) == 0 {
 		return "", nil
-	}
-
-	colName := func(field string) string {
-		switch field {
-		case "name":
-			return models.ItemColumns.Name
-		case "position":
-			return models.ItemColumns.Position
-		case "done":
-			return models.ItemColumns.Done
-		case "created_at":
-			return models.ItemColumns.CreatedAt
-		default:
-			return field
-		}
 	}
 
 	cmpOp := func(dir string) string {
@@ -215,13 +251,13 @@ func buildCursorWhere(cursor *app.Cursor) (string, []interface{}) {
 		// Prefix equalities
 		for j := 0; j < i; j++ {
 			cv := cursor.Values[j]
-			parts = append(parts, fmt.Sprintf("%s = ?", colName(cv.Field)))
+			parts = append(parts, fmt.Sprintf("%s = ?", cv.Field))
 			termArgs = append(termArgs, cv.Value)
 		}
 		// Current field comparison
 		cv := cursor.Values[i]
 		op := cmpOp(cv.Direction)
-		parts = append(parts, fmt.Sprintf("%s %s ?", colName(cv.Field), op))
+		parts = append(parts, fmt.Sprintf("%s %s ?", cv.Field, op))
 		termArgs = append(termArgs, cv.Value)
 
 		terms = append(terms, "("+strings.Join(parts, " AND ")+")")
@@ -232,61 +268,13 @@ func buildCursorWhere(cursor *app.Cursor) (string, []interface{}) {
 	var idParts []string
 	var idArgs []interface{}
 	for _, cv := range cursor.Values {
-		idParts = append(idParts, fmt.Sprintf("%s = ?", colName(cv.Field)))
+		idParts = append(idParts, fmt.Sprintf("%s = ?", cv.Field))
 		idArgs = append(idArgs, cv.Value)
 	}
-	idParts = append(idParts, fmt.Sprintf("%s > ?", models.ItemColumns.ID))
+	idParts = append(idParts, "id > ?")
 	idArgs = append(idArgs, cursor.ID)
 	terms = append(terms, "("+strings.Join(idParts, " AND ")+")")
 	args = append(args, idArgs...)
 
 	return strings.Join(terms, " OR "), args
-}
-
-func (r *Repository) Count(ctx context.Context, done *bool) (int, error) {
-	var query []qm.QueryMod
-	if done != nil {
-		query = append(query, qm.Where(models.ItemColumns.Done+"=?", *done))
-	}
-	count, err := models.Items(query...).Count(ctx, r.db)
-	if err != nil {
-		return 0, errors.WithStack(err)
-	}
-	return int(count), nil
-}
-
-func (r *Repository) Update(ctx context.Context, id domain.ModelID, updater func(item *domain.Item) error) (*domain.Item, error) {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	domainItem, err := r.getByID(ctx, id, true)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := updater(domainItem); err != nil {
-		return nil, err
-	}
-
-	dbItem := &models.Item{
-		ID:        domainItem.ID.String(),
-		Name:      domainItem.Name,
-		Position:  domainItem.Position,
-		Done:      domainItem.Done,
-		CreatedAt: domainItem.CreatedAt,
-	}
-	_, err = dbItem.Update(ctx, r.db, boil.Blacklist(models.ItemColumns.CreatedAt))
-	if err != nil {
-		return nil, err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return domainItem, nil
 }

@@ -1,105 +1,356 @@
-package repository_test
+package repository
 
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"sync"
 	"testing"
-	"time"
 
-	_ "github.com/mattn/go-sqlite3"
-	"github.com/volatiletech/sqlboiler/v4/boil"
-
+	"github.com/evgeniy-klemin/todo/db/driver"
+	"github.com/evgeniy-klemin/todo/db/fts"
+	"github.com/evgeniy-klemin/todo/db/migrations"
 	"github.com/evgeniy-klemin/todo/internal/item/domain"
-	"github.com/evgeniy-klemin/todo/internal/item/repository"
-	"github.com/evgeniy-klemin/todo/internal/item/repository/models"
+	_ "github.com/mattn/go-sqlite3"
 )
 
-func setupTestDB(t *testing.T) *sql.DB {
+func setupTestDB(t *testing.T) (*sql.DB, bool) {
 	t.Helper()
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open(driver.SQLite, ":memory:")
 	if err != nil {
-		t.Fatalf("open sqlite3: %v", err)
+		t.Fatalf("open db: %v", err)
 	}
-	_, err = db.Exec(`CREATE TABLE item (
-		id VARCHAR(36) NOT NULL PRIMARY KEY,
-		name VARCHAR(1000) NOT NULL,
-		position INTEGER NOT NULL DEFAULT 1,
-		done BOOL NOT NULL DEFAULT FALSE,
-		created_at DATETIME NOT NULL
-	)`)
+	if err := migrations.Run(db, driver.SQLite); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+	ftsEnabled := fts.Apply(db)
+	return db, ftsEnabled
+}
+
+func setupTestDBWithoutFTS(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open(driver.SQLite, ":memory:")
 	if err != nil {
-		t.Fatalf("create table: %v", err)
+		t.Fatalf("open db: %v", err)
 	}
-	boil.SetDB(db)
+	if err := migrations.Run(db, driver.SQLite); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
 	return db
 }
 
-func insertItem(t *testing.T, db *sql.DB, id string, name string, done bool) {
+// insertItems is a test helper that inserts named items into the repo.
+func insertItems(t *testing.T, repo *Repository, names ...string) {
 	t.Helper()
-	item := models.Item{
-		ID:        id,
-		Name:      name,
-		Position:  1,
-		Done:      done,
-		CreatedAt: time.Now().Truncate(time.Second),
-	}
-	if err := item.Insert(context.Background(), db, boil.Infer()); err != nil {
-		t.Fatalf("insert item: %v", err)
-	}
-}
-
-func newID(t *testing.T) string {
-	t.Helper()
-	id, err := domain.GenerateModelID()
-	if err != nil {
-		t.Fatalf("generate id: %v", err)
-	}
-	return id.String()
-}
-
-func TestCountWithFilters(t *testing.T) {
-	db := setupTestDB(t)
-	defer db.Close()
-
-	repo := repository.New(db)
 	ctx := context.Background()
-
-	// Insert 3 done and 2 not-done items
-	insertItem(t, db, newID(t), "task done 1", true)
-	insertItem(t, db, newID(t), "task done 2", true)
-	insertItem(t, db, newID(t), "task done 3", true)
-	insertItem(t, db, newID(t), "task not done 1", false)
-	insertItem(t, db, newID(t), "task not done 2", false)
-
-	t.Run("count all items no filter", func(t *testing.T) {
-		count, err := repo.Count(ctx, nil)
+	for _, name := range names {
+		item, err := domain.NewItem(name, 1)
 		if err != nil {
-			t.Fatalf("Count: %v", err)
+			t.Fatalf("NewItem(%q): %v", name, err)
 		}
-		if count != 5 {
-			t.Errorf("expected 5, got %d", count)
+		if _, err := repo.AddWithNextPosition(ctx, item); err != nil {
+			t.Fatalf("AddWithNextPosition(%q): %v", name, err)
 		}
+	}
+}
+
+func TestSearch(t *testing.T) {
+	t.Run("FTS5", func(t *testing.T) {
+		t.Run("ReturnsMatchingItems", func(t *testing.T) {
+			db, ftsEnabled := setupTestDB(t)
+			defer db.Close()
+			if !ftsEnabled {
+				t.Skip("FTS5 not available")
+			}
+			repo := NewSQLite(db, true)
+			insertItems(t, repo, "Buy milk", "Buy eggs", "Walk the dog", "Read a book")
+
+			search := "buy"
+			items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+			if len(items) != 2 {
+				t.Errorf("expected 2 items matching 'buy', got %d", len(items))
+			}
+		})
+
+		t.Run("NoMatch", func(t *testing.T) {
+			db, ftsEnabled := setupTestDB(t)
+			defer db.Close()
+			if !ftsEnabled {
+				t.Skip("FTS5 not available")
+			}
+			repo := NewSQLite(db, true)
+			insertItems(t, repo, "Buy milk")
+
+			search := "xyz"
+			items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+			if len(items) != 0 {
+				t.Errorf("expected 0 items matching 'xyz', got %d", len(items))
+			}
+		})
+
+		t.Run("CaseInsensitive", func(t *testing.T) {
+			db, ftsEnabled := setupTestDB(t)
+			defer db.Close()
+			if !ftsEnabled {
+				t.Skip("FTS5 not available")
+			}
+			repo := NewSQLite(db, true)
+			insertItems(t, repo, "Buy Milk")
+
+			search := "buy milk"
+			items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+			if len(items) != 1 {
+				t.Errorf("expected 1 item matching 'buy milk' (case-insensitive), got %d", len(items))
+			}
+		})
+
+		t.Run("PartialMatch", func(t *testing.T) {
+			db, ftsEnabled := setupTestDB(t)
+			defer db.Close()
+			if !ftsEnabled {
+				t.Skip("FTS5 not available")
+			}
+			repo := NewSQLite(db, true)
+			insertItems(t, repo, "Buy milk and eggs")
+
+			search := "milk"
+			items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+			if len(items) != 1 {
+				t.Errorf("expected 1 item matching partial 'milk', got %d", len(items))
+			}
+		})
+
+		t.Run("PrefixMatch", func(t *testing.T) {
+			db, ftsEnabled := setupTestDB(t)
+			defer db.Close()
+			if !ftsEnabled {
+				t.Skip("FTS5 not available")
+			}
+			repo := NewSQLite(db, true)
+			insertItems(t, repo, "Buying groceries", "Buy milk", "Walk the dog")
+
+			search := "buy"
+			items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+			if len(items) != 2 {
+				t.Errorf("expected 2 items matching prefix 'buy', got %d", len(items))
+			}
+		})
+
+		t.Run("MultipleWords", func(t *testing.T) {
+			db, ftsEnabled := setupTestDB(t)
+			defer db.Close()
+			if !ftsEnabled {
+				t.Skip("FTS5 not available")
+			}
+			repo := NewSQLite(db, true)
+			insertItems(t, repo, "Buy milk and eggs", "Buy bread", "Get milk")
+
+			search := "buy milk"
+			items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+			if len(items) != 1 {
+				t.Errorf("expected 1 item matching 'buy milk', got %d", len(items))
+			}
+		})
+
+		t.Run("NilSearchReturnsAll", func(t *testing.T) {
+			db, ftsEnabled := setupTestDB(t)
+			defer db.Close()
+			if !ftsEnabled {
+				t.Skip("FTS5 not available")
+			}
+			repo := NewSQLite(db, true)
+			insertItems(t, repo, "Task 1", "Task 2", "Task 3")
+
+			items, err := repo.List(context.Background(), domain.ListFilter{}, nil, 1, 20)
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+			if len(items) != 3 {
+				t.Errorf("expected 3 items with nil search, got %d", len(items))
+			}
+		})
 	})
 
-	t.Run("count with done=true", func(t *testing.T) {
-		done := true
-		count, err := repo.Count(ctx, &done)
-		if err != nil {
-			t.Fatalf("Count: %v", err)
-		}
-		if count != 3 {
-			t.Errorf("expected 3, got %d", count)
-		}
-	})
+	t.Run("Fallback", func(t *testing.T) {
+		t.Run("LIKESearch", func(t *testing.T) {
+			db := setupTestDBWithoutFTS(t)
+			defer db.Close()
+			repo := NewSQLite(db, false)
+			insertItems(t, repo, "Buy milk", "Buy eggs", "Walk the dog", "Read a book")
 
-	t.Run("count with done=false", func(t *testing.T) {
-		done := false
-		count, err := repo.Count(ctx, &done)
+			search := "buy"
+			items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
+			if err != nil {
+				t.Fatalf("List with LIKE fallback: %v", err)
+			}
+			if len(items) != 2 {
+				t.Errorf("expected 2 items matching 'buy' via LIKE fallback, got %d", len(items))
+			}
+		})
+
+		t.Run("LIKECount", func(t *testing.T) {
+			db := setupTestDBWithoutFTS(t)
+			defer db.Close()
+			repo := NewSQLite(db, false)
+			insertItems(t, repo, "Buy milk", "Buy eggs", "Walk the dog")
+
+			search := "buy"
+			count, err := repo.Count(context.Background(), domain.ListFilter{Search: &search})
+			if err != nil {
+				t.Fatalf("Count with LIKE fallback: %v", err)
+			}
+			if count != 2 {
+				t.Errorf("expected count 2 for 'buy' via LIKE fallback, got %d", count)
+			}
+		})
+	})
+}
+
+func TestCount(t *testing.T) {
+	t.Run("SearchFiltersCount", func(t *testing.T) {
+		db, ftsEnabled := setupTestDB(t)
+		defer db.Close()
+		repo := NewSQLite(db, ftsEnabled)
+		insertItems(t, repo, "Buy milk", "Buy eggs", "Walk the dog")
+
+		search := "buy"
+		count, err := repo.Count(context.Background(), domain.ListFilter{Search: &search})
 		if err != nil {
 			t.Fatalf("Count: %v", err)
 		}
 		if count != 2 {
-			t.Errorf("expected 2, got %d", count)
+			t.Errorf("expected count 2 for 'buy', got %d", count)
+		}
+
+		// nil search returns all
+		count, err = repo.Count(context.Background(), domain.ListFilter{})
+		if err != nil {
+			t.Fatalf("Count: %v", err)
+		}
+		if count != 3 {
+			t.Errorf("expected count 3 for nil search, got %d", count)
+		}
+	})
+}
+
+func TestPosition(t *testing.T) {
+	t.Run("ConcurrentCreation", func(t *testing.T) {
+		db, ftsEnabled := setupTestDB(t)
+		defer db.Close()
+		repo := NewSQLite(db, ftsEnabled)
+		ctx := context.Background()
+
+		const numGoroutines = 20
+		var wg sync.WaitGroup
+		results := make([]*domain.Item, numGoroutines)
+		errs := make([]error, numGoroutines)
+
+		wg.Add(numGoroutines)
+		for i := 0; i < numGoroutines; i++ {
+			go func(idx int) {
+				defer wg.Done()
+				item, err := domain.NewItem(fmt.Sprintf("Task %d", idx), 1)
+				if err != nil {
+					errs[idx] = fmt.Errorf("NewItem: %w", err)
+					return
+				}
+				result, err := repo.AddWithNextPosition(ctx, item)
+				if err != nil {
+					errs[idx] = fmt.Errorf("AddWithNextPosition: %w", err)
+					return
+				}
+				results[idx] = result
+			}(i)
+		}
+		wg.Wait()
+
+		for i, err := range errs {
+			if err != nil {
+				t.Fatalf("goroutine %d failed: %v", i, err)
+			}
+		}
+
+		positions := make(map[int]bool)
+		for i, item := range results {
+			pos := item.Position().Int()
+			if positions[pos] {
+				t.Errorf("duplicate position %d found for goroutine %d", pos, i)
+			}
+			positions[pos] = true
+		}
+
+		for i := 1; i <= numGoroutines; i++ {
+			if !positions[i] {
+				t.Errorf("expected position %d to be assigned, but it was not", i)
+			}
+		}
+	})
+
+	t.Run("SequentialIncrement", func(t *testing.T) {
+		db, ftsEnabled := setupTestDB(t)
+		defer db.Close()
+		repo := NewSQLite(db, ftsEnabled)
+		ctx := context.Background()
+
+		for i := 1; i <= 5; i++ {
+			item, err := domain.NewItem(fmt.Sprintf("Task %d", i), 1)
+			if err != nil {
+				t.Fatalf("NewItem: %v", err)
+			}
+			result, err := repo.AddWithNextPosition(ctx, item)
+			if err != nil {
+				t.Fatalf("AddWithNextPosition: %v", err)
+			}
+			if result.Position().Int() != i {
+				t.Errorf("expected position %d, got %d", i, result.Position().Int())
+			}
+		}
+	})
+
+	t.Run("ContinuesFromMax", func(t *testing.T) {
+		db, ftsEnabled := setupTestDB(t)
+		defer db.Close()
+		repo := NewSQLite(db, ftsEnabled)
+		ctx := context.Background()
+
+		// Insert an item with position 10 using regular Add
+		item1, err := domain.NewItem("Existing Task", 10)
+		if err != nil {
+			t.Fatalf("NewItem: %v", err)
+		}
+		if _, err = repo.Add(ctx, item1); err != nil {
+			t.Fatalf("Add: %v", err)
+		}
+
+		// AddWithNextPosition should get position 11
+		item2, err := domain.NewItem("New Task", 1)
+		if err != nil {
+			t.Fatalf("NewItem: %v", err)
+		}
+		result, err := repo.AddWithNextPosition(ctx, item2)
+		if err != nil {
+			t.Fatalf("AddWithNextPosition: %v", err)
+		}
+		if result.Position().Int() != 11 {
+			t.Errorf("expected position 11, got %d", result.Position().Int())
 		}
 	})
 }

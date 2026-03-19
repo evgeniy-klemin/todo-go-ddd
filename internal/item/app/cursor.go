@@ -1,18 +1,37 @@
 package app
 
 import (
-	"github.com/evgeniy-klemin/todo/internal/utils/pagination"
+	"encoding/base64"
+	"encoding/json"
+
+	"github.com/evgeniy-klemin/todo/internal/item/domain"
 )
 
-// Cursor and CursorValue are type aliases from the pagination package.
-type Cursor = pagination.Cursor
-type CursorValue = pagination.CursorValue
+// Cursor and CursorValue are type aliases from the domain package.
+type Cursor = domain.Cursor
+type CursorValue = domain.CursorValue
 
 // EncodeCursor encodes a cursor to a base64 string.
-var EncodeCursor = pagination.EncodeCursor
+func EncodeCursor(c *Cursor) (string, error) {
+	data, err := json.Marshal(c)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(data), nil
+}
 
 // DecodeCursor decodes a cursor from a base64 string.
-var DecodeCursor = pagination.DecodeCursor
+func DecodeCursor(s string) (*Cursor, error) {
+	data, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return nil, err
+	}
+	var c Cursor
+	if err := json.Unmarshal(data, &c); err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
 
 func BuildCursorFromItem(item Item, sortFields SortFields) *Cursor {
 	var values []CursorValue
