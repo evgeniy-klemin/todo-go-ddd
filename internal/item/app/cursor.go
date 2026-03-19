@@ -1,7 +1,7 @@
 package app
 
 import (
-	"github.com/evgeniy-klemin/todo/internal/pagination"
+	"github.com/evgeniy-klemin/todo/internal/utils/pagination"
 )
 
 // Cursor and CursorValue are type aliases from the pagination package.
