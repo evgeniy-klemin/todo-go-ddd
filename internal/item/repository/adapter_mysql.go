@@ -68,50 +68,6 @@ func (a *mysqlAdapter) WithTx(tx *sql.Tx) querier {
 	return &mysqlAdapter{q: a.q.WithTx(tx), db: tx, ftsEnabled: a.ftsEnabled}
 }
 
-func (a *mysqlAdapter) ListItems(ctx context.Context, filter listFilter, sort []sortField, limit, offset int) ([]dbItem, error) {
-	var conditions []string
-	var args []any
-
-	if filter.Done != nil {
-		conditions = append(conditions, "done=?")
-		args = append(args, *filter.Done)
-	}
-	if filter.Search != nil && *filter.Search != "" {
-		cond, arg := a.searchCondition(*filter.Search)
-		conditions = append(conditions, cond)
-		args = append(args, arg)
-	}
-
-	q := "SELECT id, name, position, done, created_at FROM item"
-	if len(conditions) > 0 {
-		q += " WHERE " + strings.Join(conditions, " AND ")
-	}
-	q += " ORDER BY " + buildOrderBy(sort)
-	q += " LIMIT ? OFFSET ?"
-	queryArgs := make([]any, len(args), len(args)+2)
-	copy(queryArgs, args)
-	queryArgs = append(queryArgs, limit, offset)
-
-	rows, err := a.db.QueryContext(ctx, q, queryArgs...)
-	if err != nil {
-		return nil, fmt.Errorf("list items: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var result []dbItem
-	for rows.Next() {
-		var item dbItem
-		if err := rows.Scan(&item.ID, &item.Name, &item.Position, &item.Done, &item.CreatedAt); err != nil {
-			return nil, fmt.Errorf("list items: %w", err)
-		}
-		result = append(result, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("list items: %w", err)
-	}
-	return result, nil
-}
-
 func (a *mysqlAdapter) ListItemsWithCursor(ctx context.Context, filter listFilter, sort []sortField, limit int, cursor *cursorParam) ([]dbItem, error) {
 	var conditions []string
 	var args []any

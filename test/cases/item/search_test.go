@@ -36,7 +36,7 @@ func (s *SearchSuite) TestExactWordMatch() {
 	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	search := "buy"
-	items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
+	items, err := repo.ListWithCursor(context.Background(), domain.ListFilter{Search: &search}, nil, 20, nil)
 	s.Require().NoError(err)
 	s.Equal(2, len(items), "expected 2 items matching 'buy'")
 }
@@ -46,7 +46,7 @@ func (s *SearchSuite) TestPrefixMatch() {
 	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	search := "buy"
-	items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
+	items, err := repo.ListWithCursor(context.Background(), domain.ListFilter{Search: &search}, nil, 20, nil)
 	s.Require().NoError(err)
 	s.Equal(2, len(items), "expected 2 items matching prefix 'buy'")
 }
@@ -56,7 +56,7 @@ func (s *SearchSuite) TestCaseInsensitive() {
 	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	search := "buy"
-	items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
+	items, err := repo.ListWithCursor(context.Background(), domain.ListFilter{Search: &search}, nil, 20, nil)
 	s.Require().NoError(err)
 	s.Equal(1, len(items))
 }
@@ -66,7 +66,7 @@ func (s *SearchSuite) TestMultipleWords() {
 	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	search := "buy milk"
-	items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
+	items, err := repo.ListWithCursor(context.Background(), domain.ListFilter{Search: &search}, nil, 20, nil)
 	s.Require().NoError(err)
 	s.Equal(1, len(items), "expected 1 item matching both 'buy' AND 'milk'")
 }
@@ -76,7 +76,7 @@ func (s *SearchSuite) TestNoResults() {
 	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	search := "xyz"
-	items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 20)
+	items, err := repo.ListWithCursor(context.Background(), domain.ListFilter{Search: &search}, nil, 20, nil)
 	s.Require().NoError(err)
 	s.Equal(0, len(items))
 }
@@ -85,12 +85,12 @@ func (s *SearchSuite) TestNilSearchReturnsAll() {
 	s.insertItems("Task 1", "Task 2", "Task 3")
 	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
-	items, err := repo.List(context.Background(), domain.ListFilter{}, nil, 1, 20)
+	items, err := repo.ListWithCursor(context.Background(), domain.ListFilter{}, nil, 20, nil)
 	s.Require().NoError(err)
 	s.Equal(3, len(items))
 }
 
-func (s *SearchSuite) TestSearchWithPagination() {
+func (s *SearchSuite) TestSearchWithCursorPagination() {
 	for i := 1; i <= 5; i++ {
 		s.insertItems(fmt.Sprintf("Task item %d", i))
 	}
@@ -98,15 +98,28 @@ func (s *SearchSuite) TestSearchWithPagination() {
 	repo := repository.NewMySQL(s.DB, s.FTSEnabled)
 
 	search := "task"
-	// Page 1
-	items, err := repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 1, 2)
+	sortFields := []domain.SortField{{Field: "position", Direction: domain.SortAsc}}
+
+	// First page: limit 2
+	items, err := repo.ListWithCursor(context.Background(), domain.ListFilter{Search: &search}, sortFields, 2, nil)
 	s.Require().NoError(err)
 	s.Equal(2, len(items))
 
-	// Page 3 — 1 remaining
-	items, err = repo.List(context.Background(), domain.ListFilter{Search: &search}, nil, 3, 2)
+	// Build cursor from last item and get next page
+	cursorData, err := repo.BuildCursor(items[len(items)-1], sortFields)
 	s.Require().NoError(err)
-	s.Equal(1, len(items))
+
+	items2, err := repo.ListWithCursor(context.Background(), domain.ListFilter{Search: &search}, sortFields, 2, cursorData)
+	s.Require().NoError(err)
+	s.Equal(2, len(items2))
+
+	// Build cursor from last item and get final page
+	cursorData2, err := repo.BuildCursor(items2[len(items2)-1], sortFields)
+	s.Require().NoError(err)
+
+	items3, err := repo.ListWithCursor(context.Background(), domain.ListFilter{Search: &search}, sortFields, 2, cursorData2)
+	s.Require().NoError(err)
+	s.Equal(1, len(items3))
 }
 
 func (s *SearchSuite) TestCountWithSearch() {

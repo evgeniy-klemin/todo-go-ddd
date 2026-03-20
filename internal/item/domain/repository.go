@@ -24,7 +24,6 @@ type Repository interface {
 	Add(ctx context.Context, item *Item) (*Item, error)
 	AddWithNextPosition(ctx context.Context, item *Item) (*Item, error)
 	Update(ctx context.Context, id ModelID, updater func(item *Item) error) (*Item, error)
-	List(ctx context.Context, filter ListFilter, sort []SortField, page, perPage int) ([]*Item, error)
 	Count(ctx context.Context, filter ListFilter) (int, error)
 	// ListWithCursor fetches up to limit items after the position encoded in cursorData.
 	// Pass cursorData = nil to start from the beginning of the result set.

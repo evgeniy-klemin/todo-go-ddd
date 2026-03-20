@@ -143,9 +143,6 @@ type querier interface {
 	InsertItem(ctx context.Context, id, name string, position int64, done bool, createdAt time.Time) error
 	UpdateItem(ctx context.Context, name string, position int64, done bool, id string) error
 	MaxPosition(ctx context.Context) (int64, error)
-	// ListItems executes a SELECT query applying filter, ORDER BY, LIMIT, and OFFSET.
-	// sort determines column order; limit and offset implement page-based slicing.
-	ListItems(ctx context.Context, filter listFilter, sort []sortField, limit, offset int) ([]dbItem, error)
 	// ListItemsWithCursor executes a SELECT with a keyset WHERE clause instead of OFFSET.
 	// cursor is nil when fetching the first page; subsequent pages pass the cursorParam
 	// returned by BuildCursor for the last visible item.

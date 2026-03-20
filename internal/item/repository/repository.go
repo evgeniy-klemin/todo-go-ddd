@@ -103,33 +103,6 @@ func (r *Repository) Add(ctx context.Context, item *domain.Item) (*domain.Item, 
 	return item, nil
 }
 
-func (r *Repository) List(
-	ctx context.Context,
-	filter domain.ListFilter,
-	sort []domain.SortField,
-	page, perPage int,
-) ([]*domain.Item, error) {
-	dbSort := make([]sortField, len(sort))
-	for i, s := range sort {
-		dbSort[i] = sortField{Field: s.Field, Desc: s.Direction == domain.SortDesc}
-	}
-
-	dbRows, err := r.q.ListItems(ctx, listFilter{Done: filter.Done, Search: filter.Search}, dbSort, perPage, perPage*(page-1))
-	if err != nil {
-		return nil, fmt.Errorf("query items: %w", err)
-	}
-
-	res := make([]*domain.Item, 0, len(dbRows))
-	for _, dbRow := range dbRows {
-		domainItem, err := toDomainItem(dbRow)
-		if err != nil {
-			return nil, fmt.Errorf("convert item: %w", err)
-		}
-		res = append(res, domainItem)
-	}
-	return res, nil
-}
-
 // ListWithCursor fetches up to limit items after the position encoded in cursorData.
 // cursorData is an opaque []byte previously returned by BuildCursor; pass nil to start
 // from the beginning of the result set. Internally it is JSON-decoded into a cursorParam
