@@ -23,7 +23,7 @@ type mockDomainRepository struct {
 	updateFn              func(ctx context.Context, id domain.ModelID, updater func(*domain.Item) error) (*domain.Item, error)
 	listFn                func(ctx context.Context, filter domain.ListFilter, sort []domain.SortField, page, perPage int) ([]*domain.Item, error)
 	countFn               func(ctx context.Context, filter domain.ListFilter) (int, error)
-	listWithCursorFn      func(ctx context.Context, filter domain.ListFilter, sort []domain.SortField, limit int, cursor *domain.Cursor) ([]*domain.Item, error)
+	listWithCursorFn      func(ctx context.Context, filter domain.ListFilter, sort []domain.SortField, limit int, cursorData []byte) ([]*domain.Item, error)
 }
 
 func (m *mockDomainRepository) GetByID(ctx context.Context, id domain.ModelID) (*domain.Item, error) {
@@ -68,9 +68,9 @@ func (m *mockDomainRepository) Count(ctx context.Context, filter domain.ListFilt
 	return 0, nil
 }
 
-func (m *mockDomainRepository) ListWithCursor(ctx context.Context, filter domain.ListFilter, sort []domain.SortField, limit int, cursor *domain.Cursor) ([]*domain.Item, error) {
+func (m *mockDomainRepository) ListWithCursor(ctx context.Context, filter domain.ListFilter, sort []domain.SortField, limit int, cursorData []byte) ([]*domain.Item, error) {
 	if m.listWithCursorFn != nil {
-		return m.listWithCursorFn(ctx, filter, sort, limit, cursor)
+		return m.listWithCursorFn(ctx, filter, sort, limit, cursorData)
 	}
 	return nil, nil
 }
@@ -269,7 +269,7 @@ func TestUpdate_SetDoneFalse_CallsReopen(t *testing.T) {
 func TestAll_PassesSearchToRepository(t *testing.T) {
 	var capturedSearch *string
 	domainRepo := &mockDomainRepository{
-		listWithCursorFn: func(_ context.Context, filter domain.ListFilter, _ []domain.SortField, _ int, _ *domain.Cursor) ([]*domain.Item, error) {
+		listWithCursorFn: func(_ context.Context, filter domain.ListFilter, _ []domain.SortField, _ int, _ []byte) ([]*domain.Item, error) {
 			capturedSearch = filter.Search
 			return []*domain.Item{}, nil
 		},
@@ -292,7 +292,7 @@ func TestAll_PassesSearchToRepository(t *testing.T) {
 func TestAll_NilSearch_PassesNilToRepository(t *testing.T) {
 	searchChecked := false
 	domainRepo := &mockDomainRepository{
-		listWithCursorFn: func(_ context.Context, filter domain.ListFilter, _ []domain.SortField, _ int, _ *domain.Cursor) ([]*domain.Item, error) {
+		listWithCursorFn: func(_ context.Context, filter domain.ListFilter, _ []domain.SortField, _ int, _ []byte) ([]*domain.Item, error) {
 			searchChecked = true
 			if filter.Search != nil {
 				t.Errorf("expected nil search, got '%s'", *filter.Search)

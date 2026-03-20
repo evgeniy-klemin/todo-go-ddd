@@ -3,13 +3,20 @@ package app
 import (
 	"encoding/base64"
 	"encoding/json"
-
-	"github.com/evgeniy-klemin/todo/internal/item/domain"
 )
 
-// Cursor and CursorValue are type aliases from the domain package.
-type Cursor = domain.Cursor
-type CursorValue = domain.CursorValue
+// Cursor holds pagination state for cursor-based listing.
+type Cursor struct {
+	Values []CursorValue
+	ID     string
+}
+
+// CursorValue holds a single sort-field value for cursor pagination.
+type CursorValue struct {
+	Field     string
+	Value     any
+	Direction string // "asc" or "desc"
+}
 
 // EncodeCursor encodes a cursor to a base64 string.
 func EncodeCursor(c *Cursor) (string, error) {

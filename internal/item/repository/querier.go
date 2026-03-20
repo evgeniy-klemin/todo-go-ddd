@@ -49,7 +49,7 @@ func buildOrderBy(sort []sortField) string {
 // cursorValue holds a single sort-field value for cursor-based pagination.
 type cursorValue struct {
 	Field     string
-	Value     interface{}
+	Value     any
 	Direction string // "asc" or "desc"
 }
 

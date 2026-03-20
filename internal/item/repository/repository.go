@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -130,14 +131,14 @@ func (r *Repository) List(
 	return res, nil
 }
 
-// ListWithCursor fetches up to limit items starting after cursor (nil = from start).
-// It delegates cursor WHERE clause building to the adapter via ListItemsWithCursor.
+// ListWithCursor fetches up to limit items starting after the opaque cursor (nil = from start).
+// cursorData is JSON-encoded cursor serialized by the app layer; it is deserialized here to cursorParam.
 func (r *Repository) ListWithCursor(
 	ctx context.Context,
 	filter domain.ListFilter,
 	sort []domain.SortField,
 	limit int,
-	cursor *domain.Cursor,
+	cursorData []byte,
 ) ([]*domain.Item, error) {
 	dbSort := make([]sortField, len(sort))
 	for i, s := range sort {
@@ -145,17 +146,10 @@ func (r *Repository) ListWithCursor(
 	}
 
 	var dbCursor *cursorParam
-	if cursor != nil {
-		dbCursor = &cursorParam{
-			Values: make([]cursorValue, len(cursor.Values)),
-			ID:     cursor.ID,
-		}
-		for i, cv := range cursor.Values {
-			dbCursor.Values[i] = cursorValue{
-				Field:     cv.Field,
-				Value:     cv.Value,
-				Direction: cv.Direction,
-			}
+	if len(cursorData) > 0 {
+		dbCursor = &cursorParam{}
+		if err := json.Unmarshal(cursorData, dbCursor); err != nil {
+			return nil, fmt.Errorf("unmarshal cursor: %w", err)
 		}
 	}
 

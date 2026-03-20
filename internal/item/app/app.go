@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/evgeniy-klemin/todo/internal/item/domain"
@@ -69,7 +71,17 @@ func (s *ItemService) Create(ctx context.Context, name string, position *int) (*
 func (s *ItemService) All(ctx context.Context, done *bool, search *string, fields []ItemField, limit int, cursor *Cursor, sortFields SortFields) ([]Item, error) {
 	filter := domain.ListFilter{Done: done, Search: search}
 	domainSort := appSortFieldsToDomain(sortFields)
-	domainItems, err := s.repo.ListWithCursor(ctx, filter, domainSort, limit, cursor)
+
+	var cursorData []byte
+	if cursor != nil {
+		var err error
+		cursorData, err = json.Marshal(cursor)
+		if err != nil {
+			return nil, fmt.Errorf("marshal cursor: %w", err)
+		}
+	}
+
+	domainItems, err := s.repo.ListWithCursor(ctx, filter, domainSort, limit, cursorData)
 	if err != nil {
 		return nil, err
 	}
