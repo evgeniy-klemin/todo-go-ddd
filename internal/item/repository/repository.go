@@ -130,8 +130,12 @@ func (r *Repository) List(
 	return res, nil
 }
 
-// ListWithCursor fetches up to limit items starting after the opaque cursor (nil = from start).
-// cursorData is JSON-encoded cursor serialized by the app layer; it is deserialized here to cursorParam.
+// ListWithCursor fetches up to limit items after the position encoded in cursorData.
+// cursorData is an opaque []byte previously returned by BuildCursor; pass nil to start
+// from the beginning of the result set. Internally it is JSON-decoded into a cursorParam
+// and forwarded to the adapter's ListItemsWithCursor which translates it into a keyset
+// WHERE clause (see buildCursorWhere). filter and sort must match those used when the
+// cursor was built, otherwise results are undefined.
 func (r *Repository) ListWithCursor(
 	ctx context.Context,
 	filter domain.ListFilter,
@@ -168,8 +172,11 @@ func (r *Repository) ListWithCursor(
 	return res, nil
 }
 
-// BuildCursor creates an opaque cursor []byte from a domain.Item and sort fields.
-// The format is owned entirely by the repository layer.
+// BuildCursor serializes item and sort into an opaque cursor []byte for use with ListWithCursor.
+// It captures the current field values of item for each sort field so that the next call to
+// ListWithCursor can reconstruct the keyset WHERE clause. The serialization format (JSON cursorParam)
+// is an implementation detail of the repository package; callers must treat it as opaque bytes.
+// sort must be the same slice passed to the original ListWithCursor call.
 func (r *Repository) BuildCursor(item *domain.Item, sort []domain.SortField) ([]byte, error) {
 	id := item.ID()
 	cp := &cursorParam{

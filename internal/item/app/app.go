@@ -66,11 +66,23 @@ func (s *ItemService) Create(ctx context.Context, name string, position *int) (*
 	return domainToAppItem(result, nil), nil
 }
 
-// All fetches items using cursor-based pagination.
-// cursorData is an opaque []byte returned by a previous call (nil = from start).
-// Returns items, an opaque nextCursor []byte for the last item (nil if no items), and any error.
-// The caller (ports layer) is responsible for deciding whether there is a next page and
-// whether to use this cursor, based on how many items were requested vs returned.
+// All fetches items using cursor-based pagination and returns a cursor for the next page.
+//
+// Parameters:
+//   - done: optional boolean filter; nil means no filter, true/false filters by done state.
+//   - search: optional full-text search string; nil or empty means no text filter.
+//   - fields: subset of item fields to populate in the returned items (nil = all fields).
+//   - limit: maximum number of items to fetch; callers typically pass perPage+1 so that
+//     the presence of an extra item signals that a next page exists.
+//   - cursorData: opaque cursor from the previous call; pass nil to start from the beginning.
+//   - sortFields: ordered list of sort columns and directions; must be consistent across pages.
+//
+// Returns:
+//   - items: up to limit domain items converted to app.Item.
+//   - nextCursor: opaque []byte pointing to item[len-2] when len > 1, or item[0] when len == 1,
+//     or nil when no items were returned. The ports layer decides whether to expose this cursor
+//     based on whether len(items) > perPage.
+//   - err: any repository or serialization error.
 func (s *ItemService) All(ctx context.Context, done *bool, search *string, fields []ItemField, limit int, cursorData []byte, sortFields SortFields) ([]Item, []byte, error) {
 	filter := domain.ListFilter{Done: done, Search: search}
 	domainSort := appSortFieldsToDomain(sortFields)
@@ -103,6 +115,9 @@ func (s *ItemService) All(ctx context.Context, done *bool, search *string, field
 	return items, nextCursor, nil
 }
 
+// Count returns the total number of items matching the given filter.
+// done and search have the same meaning as in All. The result is used
+// to populate the X-Total-Count response header and is independent of pagination.
 func (s *ItemService) Count(ctx context.Context, done *bool, search *string) (int, error) {
 	filter := domain.ListFilter{Done: done, Search: search}
 	return s.repo.Count(ctx, filter)

@@ -25,8 +25,15 @@ type ItemService interface {
 	GetItemByID(ctx context.Context, id string) (*app.Item, error)
 	Update(ctx context.Context, reqItem *app.Item) (*app.Item, error)
 	// All fetches items using cursor-based pagination.
-	// cursorData is an opaque []byte (nil = from start). Returns items, nextCursor []byte (nil if no more pages), error.
+	// done and search are optional filters (nil = no filter).
+	// fields restricts which item fields are populated (nil = all).
+	// limit is the maximum number of items to return; the handler passes perPage+1 to detect hasNext.
+	// cursorData is an opaque []byte from the previous response (nil = first page).
+	// sortFields defines column order and must be consistent across pages.
+	// Returns: items slice, opaque nextCursor for the next call (nil if no items), and any error.
 	All(ctx context.Context, done *bool, search *string, fields []app.ItemField, limit int, cursorData []byte, sortFields app.SortFields) ([]app.Item, []byte, error)
+	// Count returns the total number of items matching done and search filters,
+	// independent of pagination. Used to set the X-Total-Count response header.
 	Count(ctx context.Context, done *bool, search *string) (int, error)
 }
 
