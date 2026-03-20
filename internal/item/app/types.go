@@ -43,19 +43,6 @@ type SortField struct {
 }
 type SortFields []SortField
 
-type ListQuery struct {
-	Done       *bool
-	Search     *string
-	Fields     []ItemField
-	Page       int
-	PerPage    int
-	SortFields SortFields
-}
-
-type ListResult struct {
-	Items      []Item
-	TotalCount int
-}
 
 func appSortFieldsToDomain(sf SortFields) []domain.SortField {
 	res := make([]domain.SortField, len(sf))

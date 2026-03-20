@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -102,20 +103,35 @@ func (r *Repository) Add(ctx context.Context, item *domain.Item) (*domain.Item, 
 	return item, nil
 }
 
-func (r *Repository) List(
+// ListWithCursor fetches up to limit items after the position encoded in cursorData.
+// cursorData is an opaque []byte previously returned by BuildCursor; pass nil to start
+// from the beginning of the result set. Internally it is JSON-decoded into a cursorParam
+// and forwarded to the adapter's ListItemsWithCursor which translates it into a keyset
+// WHERE clause (see buildCursorWhere). filter and sort must match those used when the
+// cursor was built, otherwise results are undefined.
+func (r *Repository) ListWithCursor(
 	ctx context.Context,
 	filter domain.ListFilter,
 	sort []domain.SortField,
-	page, perPage int,
+	limit int,
+	cursorData []byte,
 ) ([]*domain.Item, error) {
 	dbSort := make([]sortField, len(sort))
 	for i, s := range sort {
 		dbSort[i] = sortField{Field: s.Field, Desc: s.Direction == domain.SortDesc}
 	}
 
-	dbRows, err := r.q.ListItems(ctx, listFilter{Done: filter.Done, Search: filter.Search}, dbSort, perPage, perPage*(page-1))
+	var dbCursor *cursorParam
+	if len(cursorData) > 0 {
+		dbCursor = &cursorParam{}
+		if err := json.Unmarshal(cursorData, dbCursor); err != nil {
+			return nil, fmt.Errorf("unmarshal cursor: %w", err)
+		}
+	}
+
+	dbRows, err := r.q.ListItemsWithCursor(ctx, listFilter{Done: filter.Done, Search: filter.Search}, dbSort, limit, dbCursor)
 	if err != nil {
-		return nil, fmt.Errorf("query items: %w", err)
+		return nil, fmt.Errorf("query items with cursor: %w", err)
 	}
 
 	res := make([]*domain.Item, 0, len(dbRows))
@@ -127,6 +143,44 @@ func (r *Repository) List(
 		res = append(res, domainItem)
 	}
 	return res, nil
+}
+
+// BuildCursor serializes item and sort into an opaque cursor []byte for use with ListWithCursor.
+// It captures the current field values of item for each sort field so that the next call to
+// ListWithCursor can reconstruct the keyset WHERE clause. The serialization format (JSON cursorParam)
+// is an implementation detail of the repository package; callers must treat it as opaque bytes.
+// sort must be the same slice passed to the original ListWithCursor call.
+func (r *Repository) BuildCursor(item *domain.Item, sort []domain.SortField) ([]byte, error) {
+	id := item.ID()
+	cp := &cursorParam{
+		ID: id.String(),
+	}
+	for _, sf := range sort {
+		cv := cursorValue{
+			Direction: "asc",
+		}
+		if sf.Direction == domain.SortDesc {
+			cv.Direction = "desc"
+		}
+		switch sf.Field {
+		case "name":
+			cv.Field = "name"
+			cv.Value = item.Name().String()
+		case "position":
+			cv.Field = "position"
+			cv.Value = item.Position().Int()
+		case "done":
+			cv.Field = "done"
+			cv.Value = item.Done()
+		case "created_at":
+			cv.Field = "created_at"
+			cv.Value = item.CreatedAt().Unix()
+		default:
+			cv.Field = sf.Field
+		}
+		cp.Values = append(cp.Values, cv)
+	}
+	return json.Marshal(cp)
 }
 
 func (r *Repository) Count(ctx context.Context, filter domain.ListFilter) (int, error) {
@@ -177,4 +231,3 @@ func (r *Repository) Update(
 	}
 	return domainItem, nil
 }
-

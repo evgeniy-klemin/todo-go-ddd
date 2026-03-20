@@ -23,6 +23,8 @@ type mockDomainRepository struct {
 	updateFn              func(ctx context.Context, id domain.ModelID, updater func(*domain.Item) error) (*domain.Item, error)
 	listFn                func(ctx context.Context, filter domain.ListFilter, sort []domain.SortField, page, perPage int) ([]*domain.Item, error)
 	countFn               func(ctx context.Context, filter domain.ListFilter) (int, error)
+	listWithCursorFn      func(ctx context.Context, filter domain.ListFilter, sort []domain.SortField, limit int, cursorData []byte) ([]*domain.Item, error)
+	buildCursorFn         func(item *domain.Item, sort []domain.SortField) ([]byte, error)
 }
 
 func (m *mockDomainRepository) GetByID(ctx context.Context, id domain.ModelID) (*domain.Item, error) {
@@ -65,6 +67,20 @@ func (m *mockDomainRepository) Count(ctx context.Context, filter domain.ListFilt
 		return m.countFn(ctx, filter)
 	}
 	return 0, nil
+}
+
+func (m *mockDomainRepository) ListWithCursor(ctx context.Context, filter domain.ListFilter, sort []domain.SortField, limit int, cursorData []byte) ([]*domain.Item, error) {
+	if m.listWithCursorFn != nil {
+		return m.listWithCursorFn(ctx, filter, sort, limit, cursorData)
+	}
+	return nil, nil
+}
+
+func (m *mockDomainRepository) BuildCursor(item *domain.Item, sort []domain.SortField) ([]byte, error) {
+	if m.buildCursorFn != nil {
+		return m.buildCursorFn(item, sort)
+	}
+	return nil, nil
 }
 
 // --- helpers ---
@@ -258,25 +274,18 @@ func TestUpdate_SetDoneFalse_CallsReopen(t *testing.T) {
 	}
 }
 
-func TestList_PassesSearchToRepository(t *testing.T) {
+func TestAll_PassesSearchToRepository(t *testing.T) {
 	var capturedSearch *string
 	domainRepo := &mockDomainRepository{
-		listFn: func(_ context.Context, filter domain.ListFilter, _ []domain.SortField, _, _ int) ([]*domain.Item, error) {
+		listWithCursorFn: func(_ context.Context, filter domain.ListFilter, _ []domain.SortField, _ int, _ []byte) ([]*domain.Item, error) {
 			capturedSearch = filter.Search
 			return []*domain.Item{}, nil
-		},
-		countFn: func(_ context.Context, filter domain.ListFilter) (int, error) {
-			return 0, nil
 		},
 	}
 
 	svc := newService(domainRepo)
 	searchTerm := "buy"
-	_, err := svc.List(context.Background(), ListQuery{
-		Search:  &searchTerm,
-		Page:    1,
-		PerPage: 20,
-	})
+	_, _, err := svc.All(context.Background(), nil, &searchTerm, nil, 20, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -288,31 +297,25 @@ func TestList_PassesSearchToRepository(t *testing.T) {
 	}
 }
 
-func TestList_NilSearch_PassesNilToRepository(t *testing.T) {
+func TestAll_NilSearch_PassesNilToRepository(t *testing.T) {
 	searchChecked := false
 	domainRepo := &mockDomainRepository{
-		listFn: func(_ context.Context, filter domain.ListFilter, _ []domain.SortField, _, _ int) ([]*domain.Item, error) {
+		listWithCursorFn: func(_ context.Context, filter domain.ListFilter, _ []domain.SortField, _ int, _ []byte) ([]*domain.Item, error) {
 			searchChecked = true
 			if filter.Search != nil {
 				t.Errorf("expected nil search, got '%s'", *filter.Search)
 			}
 			return []*domain.Item{}, nil
 		},
-		countFn: func(_ context.Context, filter domain.ListFilter) (int, error) {
-			return 0, nil
-		},
 	}
 
 	svc := newService(domainRepo)
-	_, err := svc.List(context.Background(), ListQuery{
-		Page:    1,
-		PerPage: 20,
-	})
+	_, _, err := svc.All(context.Background(), nil, nil, nil, 20, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !searchChecked {
-		t.Fatal("List was not called")
+		t.Fatal("All was not called")
 	}
 }
 

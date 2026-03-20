@@ -26,7 +26,8 @@ type mockService struct {
 	createFn  func(ctx context.Context, name string, position *int) (*app.Item, error)
 	getByIDFn func(ctx context.Context, id string) (*app.Item, error)
 	updateFn  func(ctx context.Context, reqItem *app.Item) (*app.Item, error)
-	listFn    func(ctx context.Context, query app.ListQuery) (app.ListResult, error)
+	allFn     func(ctx context.Context, done *bool, search *string, fields []app.ItemField, limit int, cursorData []byte, sortFields app.SortFields) ([]app.Item, []byte, error)
+	countFn   func(ctx context.Context, done *bool, search *string) (int, error)
 }
 
 func (m *mockService) Create(ctx context.Context, name string, position *int) (*app.Item, error) {
@@ -38,11 +39,19 @@ func (m *mockService) GetItemByID(ctx context.Context, id string) (*app.Item, er
 func (m *mockService) Update(ctx context.Context, reqItem *app.Item) (*app.Item, error) {
 	return m.updateFn(ctx, reqItem)
 }
-func (m *mockService) List(ctx context.Context, query app.ListQuery) (app.ListResult, error) {
-	if m.listFn != nil {
-		return m.listFn(ctx, query)
+
+func (m *mockService) All(ctx context.Context, done *bool, search *string, fields []app.ItemField, limit int, cursorData []byte, sortFields app.SortFields) ([]app.Item, []byte, error) {
+	if m.allFn != nil {
+		return m.allFn(ctx, done, search, fields, limit, cursorData, sortFields)
 	}
-	return app.ListResult{}, nil
+	return nil, nil, nil
+}
+
+func (m *mockService) Count(ctx context.Context, done *bool, search *string) (int, error) {
+	if m.countFn != nil {
+		return m.countFn(ctx, done, search)
+	}
+	return 0, nil
 }
 
 func intPtr(v int) *int       { return &v }
@@ -101,11 +110,11 @@ func TestPostItems_InvalidName_Returns422(t *testing.T) {
 }
 
 func TestGetItems_WithSearchParam_PassesToService(t *testing.T) {
-	var capturedQuery app.ListQuery
+	var capturedSearch *string
 	svc := &mockService{
-		listFn: func(_ context.Context, query app.ListQuery) (app.ListResult, error) {
-			capturedQuery = query
-			return app.ListResult{}, nil
+		allFn: func(_ context.Context, _ *bool, search *string, _ []app.ItemField, _ int, _ []byte, _ app.SortFields) ([]app.Item, []byte, error) {
+			capturedSearch = search
+			return nil, nil, nil
 		},
 	}
 
@@ -122,20 +131,16 @@ func TestGetItems_WithSearchParam_PassesToService(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", rec.Code)
 	}
-	if capturedQuery.Search == nil {
+	if capturedSearch == nil {
 		t.Fatal("expected search to be set, got nil")
 	}
-	if *capturedQuery.Search != "buy" {
-		t.Errorf("expected search 'buy', got '%s'", *capturedQuery.Search)
+	if *capturedSearch != "buy" {
+		t.Errorf("expected search 'buy', got '%s'", *capturedSearch)
 	}
 }
 
 func TestGetItems_Returns200(t *testing.T) {
-	svc := &mockService{
-		listFn: func(_ context.Context, _ app.ListQuery) (app.ListResult, error) {
-			return app.ListResult{}, nil
-		},
-	}
+	svc := &mockService{}
 
 	server := newTestServer(svc)
 	e := echo.New()

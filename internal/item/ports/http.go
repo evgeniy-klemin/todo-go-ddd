@@ -23,8 +23,18 @@ var errorStatusMap = map[error]int{
 type ItemService interface {
 	Create(ctx context.Context, name string, position *int) (*app.Item, error)
 	GetItemByID(ctx context.Context, id string) (*app.Item, error)
-	List(ctx context.Context, query app.ListQuery) (app.ListResult, error)
 	Update(ctx context.Context, reqItem *app.Item) (*app.Item, error)
+	// All fetches items using cursor-based pagination.
+	// done and search are optional filters (nil = no filter).
+	// fields restricts which item fields are populated (nil = all).
+	// limit is the maximum number of items to return; the handler passes perPage+1 to detect hasNext.
+	// cursorData is an opaque []byte from the previous response (nil = first page).
+	// sortFields defines column order and must be consistent across pages.
+	// Returns: items slice, opaque nextCursor for the next call (nil if no items), and any error.
+	All(ctx context.Context, done *bool, search *string, fields []app.ItemField, limit int, cursorData []byte, sortFields app.SortFields) ([]app.Item, []byte, error)
+	// Count returns the total number of items matching done and search filters,
+	// independent of pagination. Used to set the X-Total-Count response header.
+	Count(ctx context.Context, done *bool, search *string) (int, error)
 }
 
 func httpError(ctx echo.Context, err error) error {
@@ -49,50 +59,60 @@ func NewHttpServer(itemService ItemService) *HttpServer {
 
 // (GET /items)
 func (h *HttpServer) GetItems(ctx echo.Context, params GetItemsParams) error {
-	query, err := buildListQuery(params)
-	if err != nil {
-		return httpError(ctx, err)
-	}
-
-	result, err := h.itemService.List(ctx.Request().Context(), query)
-	if err != nil {
-		return httpError(ctx, err)
-	}
-
-	paginator := NewPaginator(query.Page, query.PerPage, result.TotalCount)
-	ctx.Response().Header().Set("X-Page", strconv.Itoa(query.Page))
-	ctx.Response().Header().Set("X-Per-Page", strconv.Itoa(query.PerPage))
-	ctx.Response().Header().Set("X-Total-Count", strconv.Itoa(result.TotalCount))
-	ctx.Response().Header().Set("Link", links(ctx.Request(), paginator))
-
-	return ctx.JSON(http.StatusOK, appItemsToRespItems(result.Items))
-}
-
-func buildListQuery(params GetItemsParams) (app.ListQuery, error) {
 	fields, err := getAppFieldsFromGetParam(params.Fields)
 	if err != nil {
-		return app.ListQuery{}, err
+		return httpError(ctx, err)
 	}
 	sortFields, err := getSortFieldsFromGetParam(params.Sort)
 	if err != nil {
-		return app.ListQuery{}, err
+		return httpError(ctx, err)
 	}
-	page := 1
-	if params.Page != nil {
-		page = int(*params.Page)
+	if len(sortFields) == 0 {
+		sortFields = app.SortFields{{Field: app.ItemFieldPosition, SortDirection: app.SortDirectionAsc}}
 	}
+
 	perPage := 20
 	if params.PerPage != nil {
 		perPage = int(*params.PerPage)
 	}
-	return app.ListQuery{
-		Done:       params.Done,
-		Search:     params.Q,
-		Fields:     fields,
-		Page:       page,
-		PerPage:    perPage,
-		SortFields: sortFields,
-	}, nil
+
+	var cursorData []byte
+	if params.Cursor != nil && *params.Cursor != "" {
+		cursorData, err = decodeCursor(string(*params.Cursor))
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid cursor")
+		}
+	}
+
+	items, nextCursor, err := h.itemService.All(ctx.Request().Context(), params.Done, params.Q, fields, perPage+1, cursorData, sortFields)
+	if err != nil {
+		return httpError(ctx, err)
+	}
+
+	hasNext := len(items) > perPage
+	if hasNext {
+		items = items[:perPage]
+	}
+
+	var nextCursorEncoded string
+	if hasNext && len(nextCursor) > 0 {
+		nextCursorEncoded = encodeCursor(nextCursor)
+	}
+
+	totalCount, err := h.itemService.Count(ctx.Request().Context(), params.Done, params.Q)
+	if err != nil {
+		return httpError(ctx, err)
+	}
+
+	respItems := appItemsToRespItems(items)
+	ctx.Response().Header().Set("X-Per-Page", strconv.Itoa(perPage))
+	ctx.Response().Header().Set("X-Total-Count", strconv.Itoa(totalCount))
+	if hasNext {
+		ctx.Response().Header().Set("X-Next-Cursor", nextCursorEncoded)
+	}
+	ctx.Response().Header().Set("Link", cursorLinks(ctx.Request(), perPage, hasNext, nextCursorEncoded))
+
+	return ctx.JSON(http.StatusOK, respItems)
 }
 
 // Create New User

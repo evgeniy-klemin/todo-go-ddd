@@ -52,11 +52,11 @@ func (w *ServerInterfaceWrapper) GetItems(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter _per_page: %s", err))
 	}
 
-	// ------------- Optional query parameter "_page" -------------
+	// ------------- Optional query parameter "_cursor" -------------
 
-	err = runtime.BindQueryParameter("form", true, false, "_page", ctx.QueryParams(), &params.Page)
+	err = runtime.BindQueryParameter("form", true, false, "_cursor", ctx.QueryParams(), &params.Cursor)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter _page: %s", err))
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter _cursor: %s", err))
 	}
 
 	// ------------- Optional query parameter "_sort" -------------
