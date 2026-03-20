@@ -36,6 +36,19 @@ Default DSN per driver:
 - **sqlite3**: `file:todotest.db?cache=shared`
 - **mysql**: `todo:todo@tcp(localhost)/todotest?parseTime=true`
 
+## Pagination
+
+The list endpoint uses cursor-based pagination. Response headers:
+
+| Header          | Description                        |
+|-----------------|------------------------------------|
+| `X-Total-Count` | Total number of matching items     |
+| `X-Per-Page`    | Items per page                     |
+| `X-Next-Cursor` | Opaque cursor for the next page    |
+| `Link`          | Standard pagination links          |
+
+Pass `_cursor=<value>` query parameter to fetch the next page.
+
 ## Make Targets
 
 | Target                 | Description                                       |
@@ -62,7 +75,7 @@ After modifying any file under `db/queries/`, run `sqlc generate` to keep the ge
 ## Run
 
 - `go run cmd/todoserver/todoserver.go` — run server (use `-port` flag to override port)
-- `go run cmd/todoclient/todoclient.go` — run client (concurrent 10000 REST queries, uses port 8080)
+- `go run cmd/todoclient/todoclient.go` — load-test client (10000 concurrent requests to localhost:8080; start server with `-port 8080`)
 
 ## Frontend
 
@@ -96,8 +109,11 @@ internal/item/
   ports/              HTTP handlers (OpenAPI); ItemService interface (inbound port)
   repository/         Database adapters (sqlitedb / mysqldb) via internal querier
 db/
-  schema/             Schema definitions (single source of truth)
+  driver/             Database driver helpers
+  migrations/         Schema migrations (single source of truth)
+  fts/                Full-text search setup (SQLite FTS5)
   fixtures/           Test data
+  queries/            SQL queries for sqlc codegen
 test/
   cases/item/         MySQL integration tests
   setup/              Test suite setup (MySQL)
