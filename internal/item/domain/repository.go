@@ -27,6 +27,9 @@ type Repository interface {
 	List(ctx context.Context, filter ListFilter, sort []SortField, page, perPage int) ([]*Item, error)
 	Count(ctx context.Context, filter ListFilter) (int, error)
 	// ListWithCursor fetches up to limit items after the given opaque cursor (nil = from start).
-	// cursorData is a JSON-encoded cursor serialized by the app layer.
+	// cursorData is an opaque []byte owned entirely by the repository layer.
 	ListWithCursor(ctx context.Context, filter ListFilter, sort []SortField, limit int, cursorData []byte) ([]*Item, error)
+	// BuildCursor serializes the given item and sort fields into an opaque cursor []byte
+	// that can be passed back to ListWithCursor to continue pagination.
+	BuildCursor(item *Item, sort []SortField) ([]byte, error)
 }

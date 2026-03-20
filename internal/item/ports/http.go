@@ -24,7 +24,9 @@ type ItemService interface {
 	Create(ctx context.Context, name string, position *int) (*app.Item, error)
 	GetItemByID(ctx context.Context, id string) (*app.Item, error)
 	Update(ctx context.Context, reqItem *app.Item) (*app.Item, error)
-	All(ctx context.Context, done *bool, search *string, fields []app.ItemField, limit int, cursor *app.Cursor, sortFields app.SortFields) ([]app.Item, error)
+	// All fetches items using cursor-based pagination.
+	// cursorData is an opaque []byte (nil = from start). Returns items, nextCursor []byte (nil if no more pages), error.
+	All(ctx context.Context, done *bool, search *string, fields []app.ItemField, limit int, cursorData []byte, sortFields app.SortFields) ([]app.Item, []byte, error)
 	Count(ctx context.Context, done *bool, search *string) (int, error)
 }
 
@@ -67,15 +69,15 @@ func (h *HttpServer) GetItems(ctx echo.Context, params GetItemsParams) error {
 		perPage = int(*params.PerPage)
 	}
 
-	var cursor *app.Cursor
+	var cursorData []byte
 	if params.Cursor != nil && *params.Cursor != "" {
-		cursor, err = app.DecodeCursor(string(*params.Cursor))
+		cursorData, err = decodeCursor(string(*params.Cursor))
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, "invalid cursor")
 		}
 	}
 
-	items, err := h.itemService.All(ctx.Request().Context(), params.Done, params.Q, fields, perPage+1, cursor, sortFields)
+	items, nextCursor, err := h.itemService.All(ctx.Request().Context(), params.Done, params.Q, fields, perPage+1, cursorData, sortFields)
 	if err != nil {
 		return httpError(ctx, err)
 	}
@@ -86,13 +88,8 @@ func (h *HttpServer) GetItems(ctx echo.Context, params GetItemsParams) error {
 	}
 
 	var nextCursorEncoded string
-	if hasNext && len(items) > 0 {
-		lastItem := items[len(items)-1]
-		nextCursor := app.BuildCursorFromItem(lastItem, sortFields)
-		nextCursorEncoded, err = app.EncodeCursor(nextCursor)
-		if err != nil {
-			return httpError(ctx, err)
-		}
+	if hasNext && len(nextCursor) > 0 {
+		nextCursorEncoded = encodeCursor(nextCursor)
 	}
 
 	totalCount, err := h.itemService.Count(ctx.Request().Context(), params.Done, params.Q)

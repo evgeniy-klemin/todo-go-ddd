@@ -24,6 +24,7 @@ type mockDomainRepository struct {
 	listFn                func(ctx context.Context, filter domain.ListFilter, sort []domain.SortField, page, perPage int) ([]*domain.Item, error)
 	countFn               func(ctx context.Context, filter domain.ListFilter) (int, error)
 	listWithCursorFn      func(ctx context.Context, filter domain.ListFilter, sort []domain.SortField, limit int, cursorData []byte) ([]*domain.Item, error)
+	buildCursorFn         func(item *domain.Item, sort []domain.SortField) ([]byte, error)
 }
 
 func (m *mockDomainRepository) GetByID(ctx context.Context, id domain.ModelID) (*domain.Item, error) {
@@ -71,6 +72,13 @@ func (m *mockDomainRepository) Count(ctx context.Context, filter domain.ListFilt
 func (m *mockDomainRepository) ListWithCursor(ctx context.Context, filter domain.ListFilter, sort []domain.SortField, limit int, cursorData []byte) ([]*domain.Item, error) {
 	if m.listWithCursorFn != nil {
 		return m.listWithCursorFn(ctx, filter, sort, limit, cursorData)
+	}
+	return nil, nil
+}
+
+func (m *mockDomainRepository) BuildCursor(item *domain.Item, sort []domain.SortField) ([]byte, error) {
+	if m.buildCursorFn != nil {
+		return m.buildCursorFn(item, sort)
 	}
 	return nil, nil
 }
@@ -277,7 +285,7 @@ func TestAll_PassesSearchToRepository(t *testing.T) {
 
 	svc := newService(domainRepo)
 	searchTerm := "buy"
-	_, err := svc.All(context.Background(), nil, &searchTerm, nil, 20, nil, nil)
+	_, _, err := svc.All(context.Background(), nil, &searchTerm, nil, 20, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -302,7 +310,7 @@ func TestAll_NilSearch_PassesNilToRepository(t *testing.T) {
 	}
 
 	svc := newService(domainRepo)
-	_, err := svc.All(context.Background(), nil, nil, nil, 20, nil, nil)
+	_, _, err := svc.All(context.Background(), nil, nil, nil, 20, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

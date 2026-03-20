@@ -168,6 +168,41 @@ func (r *Repository) ListWithCursor(
 	return res, nil
 }
 
+// BuildCursor creates an opaque cursor []byte from a domain.Item and sort fields.
+// The format is owned entirely by the repository layer.
+func (r *Repository) BuildCursor(item *domain.Item, sort []domain.SortField) ([]byte, error) {
+	id := item.ID()
+	cp := &cursorParam{
+		ID: id.String(),
+	}
+	for _, sf := range sort {
+		cv := cursorValue{
+			Direction: "asc",
+		}
+		if sf.Direction == domain.SortDesc {
+			cv.Direction = "desc"
+		}
+		switch sf.Field {
+		case "name":
+			cv.Field = "name"
+			cv.Value = item.Name().String()
+		case "position":
+			cv.Field = "position"
+			cv.Value = item.Position().Int()
+		case "done":
+			cv.Field = "done"
+			cv.Value = item.Done()
+		case "created_at":
+			cv.Field = "created_at"
+			cv.Value = item.CreatedAt().Unix()
+		default:
+			cv.Field = sf.Field
+		}
+		cp.Values = append(cp.Values, cv)
+	}
+	return json.Marshal(cp)
+}
+
 func (r *Repository) Count(ctx context.Context, filter domain.ListFilter) (int, error) {
 	count, err := r.q.CountItems(ctx, listFilter{Done: filter.Done, Search: filter.Search})
 	if err != nil {

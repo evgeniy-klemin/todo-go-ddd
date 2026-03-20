@@ -26,7 +26,7 @@ type mockService struct {
 	createFn  func(ctx context.Context, name string, position *int) (*app.Item, error)
 	getByIDFn func(ctx context.Context, id string) (*app.Item, error)
 	updateFn  func(ctx context.Context, reqItem *app.Item) (*app.Item, error)
-	allFn     func(ctx context.Context, done *bool, search *string, fields []app.ItemField, limit int, cursor *app.Cursor, sortFields app.SortFields) ([]app.Item, error)
+	allFn     func(ctx context.Context, done *bool, search *string, fields []app.ItemField, limit int, cursorData []byte, sortFields app.SortFields) ([]app.Item, []byte, error)
 	countFn   func(ctx context.Context, done *bool, search *string) (int, error)
 }
 
@@ -40,11 +40,11 @@ func (m *mockService) Update(ctx context.Context, reqItem *app.Item) (*app.Item,
 	return m.updateFn(ctx, reqItem)
 }
 
-func (m *mockService) All(ctx context.Context, done *bool, search *string, fields []app.ItemField, limit int, cursor *app.Cursor, sortFields app.SortFields) ([]app.Item, error) {
+func (m *mockService) All(ctx context.Context, done *bool, search *string, fields []app.ItemField, limit int, cursorData []byte, sortFields app.SortFields) ([]app.Item, []byte, error) {
 	if m.allFn != nil {
-		return m.allFn(ctx, done, search, fields, limit, cursor, sortFields)
+		return m.allFn(ctx, done, search, fields, limit, cursorData, sortFields)
 	}
-	return nil, nil
+	return nil, nil, nil
 }
 
 func (m *mockService) Count(ctx context.Context, done *bool, search *string) (int, error) {
@@ -112,9 +112,9 @@ func TestPostItems_InvalidName_Returns422(t *testing.T) {
 func TestGetItems_WithSearchParam_PassesToService(t *testing.T) {
 	var capturedSearch *string
 	svc := &mockService{
-		allFn: func(_ context.Context, _ *bool, search *string, _ []app.ItemField, _ int, _ *app.Cursor, _ app.SortFields) ([]app.Item, error) {
+		allFn: func(_ context.Context, _ *bool, search *string, _ []app.ItemField, _ int, _ []byte, _ app.SortFields) ([]app.Item, []byte, error) {
 			capturedSearch = search
-			return nil, nil
+			return nil, nil, nil
 		},
 	}
 
