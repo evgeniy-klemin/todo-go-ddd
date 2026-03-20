@@ -127,7 +127,7 @@ func (a *mysqlAdapter) ListItemsWithCursor(ctx context.Context, filter listFilte
 	}
 
 	if cursor != nil {
-		whereClause, cursorArgs := buildCursorWhere(cursor)
+		whereClause, cursorArgs := a.buildCursorWhere(cursor)
 		if whereClause != "" {
 			conditions = append(conditions, "("+whereClause+")")
 			args = append(args, cursorArgs...)
@@ -185,6 +185,57 @@ func (a *mysqlAdapter) CountItems(ctx context.Context, filter listFilter) (int, 
 		return 0, fmt.Errorf("count items: %w", err)
 	}
 	return count, nil
+}
+
+// buildCursorWhere builds the expanded OR-form cursor WHERE clause.
+// For each sort field, it builds the prefix-equality + current-field comparison terms.
+// Finally, it adds an id tie-breaker term.
+func (a *mysqlAdapter) buildCursorWhere(cursor *cursorParam) (string, []interface{}) {
+	if cursor == nil || len(cursor.Values) == 0 {
+		return "", nil
+	}
+
+	cmpOp := func(dir string) string {
+		if dir == "desc" {
+			return "<"
+		}
+		return ">"
+	}
+
+	var terms []string
+	var args []interface{}
+
+	n := len(cursor.Values)
+
+	for i := 0; i < n; i++ {
+		var parts []string
+		var termArgs []interface{}
+		for j := 0; j < i; j++ {
+			cv := cursor.Values[j]
+			parts = append(parts, fmt.Sprintf("%s = ?", cv.Field))
+			termArgs = append(termArgs, cv.Value)
+		}
+		cv := cursor.Values[i]
+		op := cmpOp(cv.Direction)
+		parts = append(parts, fmt.Sprintf("%s %s ?", cv.Field, op))
+		termArgs = append(termArgs, cv.Value)
+
+		terms = append(terms, "("+strings.Join(parts, " AND ")+")")
+		args = append(args, termArgs...)
+	}
+
+	var idParts []string
+	var idArgs []interface{}
+	for _, cv := range cursor.Values {
+		idParts = append(idParts, fmt.Sprintf("%s = ?", cv.Field))
+		idArgs = append(idArgs, cv.Value)
+	}
+	idParts = append(idParts, "id > ?")
+	idArgs = append(idArgs, cursor.ID)
+	terms = append(terms, "("+strings.Join(idParts, " AND ")+")")
+	args = append(args, idArgs...)
+
+	return strings.Join(terms, " OR "), args
 }
 
 func (a *mysqlAdapter) searchCondition(search string) (string, any) {

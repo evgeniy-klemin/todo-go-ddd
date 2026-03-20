@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/evgeniy-klemin/todo/internal/item/domain"
@@ -216,59 +215,4 @@ func (r *Repository) Update(
 		return nil, err
 	}
 	return domainItem, nil
-}
-
-// buildCursorWhere builds the expanded OR-form cursor WHERE clause.
-// For each sort field, it builds the prefix-equality + current-field comparison terms.
-// Finally, it adds an id tie-breaker term.
-func buildCursorWhere(cursor *cursorParam) (string, []interface{}) {
-	if cursor == nil || len(cursor.Values) == 0 {
-		return "", nil
-	}
-
-	cmpOp := func(dir string) string {
-		if dir == "desc" {
-			return "<"
-		}
-		return ">"
-	}
-
-	var terms []string
-	var args []interface{}
-
-	n := len(cursor.Values)
-
-	// Build n terms: for i in [0..n-1], prefix equality on [0..i-1] + comparison on [i]
-	for i := 0; i < n; i++ {
-		var parts []string
-		var termArgs []interface{}
-		// Prefix equalities
-		for j := 0; j < i; j++ {
-			cv := cursor.Values[j]
-			parts = append(parts, fmt.Sprintf("%s = ?", cv.Field))
-			termArgs = append(termArgs, cv.Value)
-		}
-		// Current field comparison
-		cv := cursor.Values[i]
-		op := cmpOp(cv.Direction)
-		parts = append(parts, fmt.Sprintf("%s %s ?", cv.Field, op))
-		termArgs = append(termArgs, cv.Value)
-
-		terms = append(terms, "("+strings.Join(parts, " AND ")+")")
-		args = append(args, termArgs...)
-	}
-
-	// Add id tie-breaker: all sort fields equal + id > cursor.ID
-	var idParts []string
-	var idArgs []interface{}
-	for _, cv := range cursor.Values {
-		idParts = append(idParts, fmt.Sprintf("%s = ?", cv.Field))
-		idArgs = append(idArgs, cv.Value)
-	}
-	idParts = append(idParts, "id > ?")
-	idArgs = append(idArgs, cursor.ID)
-	terms = append(terms, "("+strings.Join(idParts, " AND ")+")")
-	args = append(args, idArgs...)
-
-	return strings.Join(terms, " OR "), args
 }
