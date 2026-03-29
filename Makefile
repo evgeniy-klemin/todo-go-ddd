@@ -39,3 +39,5 @@ $(GOLANGCI_LINT):
 
 lint: $(GOLANGCI_LINT)
 	$(GOLANGCI_LINT) run ./...
+	gopls check $$(find . -name "*.go" -not -path "./frontend/*" | tr '\n' ' ')
+	staticcheck

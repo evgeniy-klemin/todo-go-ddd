@@ -115,12 +115,12 @@ func (h *HttpServer) GetItems(ctx echo.Context, params GetItemsParams) error {
 	return ctx.JSON(http.StatusOK, respItems)
 }
 
-// Create New User
+// Create New Item
 // (POST /items)
 func (h *HttpServer) PostItems(ctx echo.Context) error {
 	var itemPost ItemPost
 	if err := ctx.Bind(&itemPost); err != nil {
-		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "некорректные параметры"})
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request parameters"})
 	}
 	var position *int
 	if itemPost.Position != nil {
@@ -155,7 +155,7 @@ func (h *HttpServer) GetItemsItemId(ctx echo.Context, itemId ItemId) error {
 func (h *HttpServer) PatchItemsItemid(ctx echo.Context, itemId ItemId) error {
 	var itemPatch ItemPatch
 	if err := ctx.Bind(&itemPatch); err != nil {
-		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "некорректные параметры"})
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request parameters"})
 	}
 
 	appItem := &app.Item{
